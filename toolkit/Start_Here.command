@@ -3,10 +3,9 @@
 # Start_Here.command  —  THE ONLY FILE MOST PEOPLE NEED TO RUN.
 #
 # Double-click this file. It will:
-#   1. Check for everything the toolkit needs (Homebrew, ffmpeg, Python + Tk,
-#      and optional drag-and-drop support).
+#   1. Check for what the app needs (bundled ffmpeg + Python 3 — no GUI toolkit).
 #   2. Offer to install anything that's missing — you just confirm.
-#   3. Launch the 8-bit -> 10-bit converter GUI.
+#   3. Start the local converter app and open it in your web browser.
 #
 # FIRST RUN: macOS blocks unsigned scripts by default. If double-click does
 # nothing, right-click this file -> Open -> Open. You only do this once.
@@ -69,40 +68,28 @@ else
   fi
 fi
 
-# --- 4. Python 3 + Tk (for the GUI) ---
+# --- 4. Python 3 (runs the local web app — stdlib only, no GUI toolkit needed) ---
 PYBIN="$(command -v python3 || true)"
 if [[ -z "$PYBIN" ]]; then
-  warn "Python 3 is not installed."
-  if ask "Install Python 3 (with Tk) now?"; then
-    brew install python python-tk
-    PYBIN="$(command -v python3 || true)"
+  warn "Python 3 is not installed (needed to run the app)."
+  if command -v brew >/dev/null 2>&1; then
+    if ask "Install Python 3 now?"; then
+      brew install python
+      PYBIN="$(command -v python3 || true)"
+    fi
+  else
+    warn "Install the Command Line Tools (run 'xcode-select --install') or Python from python.org, then re-run."
   fi
 fi
 
-if [[ -n "$PYBIN" ]] && ! "$PYBIN" -c "import tkinter" >/dev/null 2>&1; then
-  warn "Python's Tk GUI support (python-tk) is missing."
-  if ask "Install python-tk now?"; then
-    brew install python-tk
-  fi
-fi
-
-# --- 5. Optional: drag-and-drop support (tkinterdnd2) ---
-if [[ -n "$PYBIN" ]] && "$PYBIN" -c "import tkinter" >/dev/null 2>&1 \
-   && ! "$PYBIN" -c "import tkinterdnd2" >/dev/null 2>&1; then
-  if ask "Enable drag-and-drop into the app (optional)?"; then
-    "$PYBIN" -m pip install --user tkinterdnd2 >/dev/null 2>&1 \
-      && ok "Drag-and-drop enabled." \
-      || warn "Couldn't install tkinterdnd2 — the app still works via the Add buttons."
-  fi
-fi
-
-# --- 6. Launch the GUI ---
+# --- 5. Launch the web app (opens in your browser) ---
 say
-if [[ -n "$PYBIN" ]] && "$PYBIN" -c "import tkinter" >/dev/null 2>&1; then
-  ok "All set. Launching the converter…"
-  exec "$PYBIN" "./10bit_converter_gui.py"
+if [[ -n "$PYBIN" ]]; then
+  ok "All set. Opening the converter in your browser…"
+  say "${DIM}Keep this Terminal window open while you use the app. Close it to quit.${RESET}"
+  exec "$PYBIN" "./server.py"
 else
-  err "The GUI needs Python 3 + Tk, which aren't ready."
+  err "Python 3 isn't available, so the app can't start."
   say "You can still convert from Terminal with:"
   say "  ${BOLD}./8bit_to_10bit.sh yourvideo.mp4${RESET}"
   read -r -p "Press Return to close." </dev/tty

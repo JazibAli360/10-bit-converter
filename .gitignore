@@ -13,3 +13,6 @@ toolkit/bin/
 *.m4v
 test1/
 toolkit/.10bit_converter_settings.json
+
+# Machine-specific preview config
+.claude/launch.json

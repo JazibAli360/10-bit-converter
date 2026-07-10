@@ -1,0 +1,297 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>8-bit → 10-bit Converter</title>
+<style>
+  :root{
+    --bg:#f4f5f7; --card:#ffffff; --ink:#1a1d21; --muted:#6b7280; --line:#e4e6eb;
+    --accent:#2d7dd2; --accent-dk:#1b5fa5; --danger:#d9534f; --danger-dk:#b52b27;
+    --ok:#1a7f37; --run:#1f6feb; --warn:#8a6d3b; --chip:#eef1f5;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{ --bg:#15171b; --card:#1e2127; --ink:#e8eaed; --muted:#9aa0a8; --line:#2c313a;
+      --accent:#4c9aff; --accent-dk:#2d7dd2; --chip:#262b33; --ok:#3fb950; --run:#4c9aff; }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
+    background:var(--bg);color:var(--ink);font-size:14px}
+  header{background:#1e2a38;color:#fff;padding:18px 22px}
+  header h1{margin:0;font-size:20px;font-weight:600;letter-spacing:.2px}
+  header p{margin:4px 0 0;color:#9db4cf;font-size:13px}
+  main{max-width:900px;margin:0 auto;padding:16px 20px 40px}
+  .toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:16px 0 10px}
+  .toolbar .spacer{flex:1}
+  button{font:inherit;border:0;border-radius:8px;padding:9px 14px;cursor:pointer;
+    background:var(--chip);color:var(--ink);transition:filter .12s,background .12s}
+  button:hover{filter:brightness(.97)}
+  button:disabled{opacity:.5;cursor:not-allowed}
+  button.primary{background:var(--accent);color:#fff;font-weight:600;padding:12px 30px;font-size:15px}
+  button.primary:hover{background:var(--accent-dk);filter:none}
+  button.danger{background:var(--danger);color:#fff;font-weight:600}
+  button.danger:hover{background:var(--danger-dk);filter:none}
+  button.ghost{background:transparent;border:1px solid var(--line)}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px}
+  .queue{min-height:220px;max-height:44vh;overflow:auto;padding:8px}
+  .empty{color:var(--muted);text-align:center;padding:52px 20px;line-height:1.6}
+  .row{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px}
+  .row:hover{background:var(--chip)}
+  .row input[type=checkbox]{width:16px;height:16px}
+  .row .name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .row .status{width:92px;text-align:center;font-weight:600;font-size:13px}
+  .row .pct{width:52px;text-align:right;color:var(--muted);font-variant-numeric:tabular-nums}
+  .s-Queued{color:var(--muted)} .s-Running{color:var(--run)} .s-Done{color:var(--ok)}
+  .s-Failed{color:var(--danger)} .s-Skipped{color:var(--muted)} .s-Cancelled{color:var(--muted)}
+  .options{display:flex;gap:24px;flex-wrap:wrap;align-items:center;margin:14px 2px}
+  .options label{color:var(--muted);margin-right:10px}
+  .seg{display:inline-flex;background:var(--chip);border-radius:9px;padding:3px}
+  .seg button{background:transparent;padding:6px 14px;border-radius:7px;font-size:13px;color:var(--muted)}
+  .seg button.on{background:var(--card);color:var(--ink);font-weight:600;box-shadow:0 1px 2px rgba(0,0,0,.08)}
+  .now{padding:14px 16px;margin-top:6px}
+  .now .lbl{font-size:11px;font-weight:700;letter-spacing:.5px;color:var(--muted)}
+  .now .file{font-size:15px;font-weight:600;margin:2px 0}
+  .now .stats{color:var(--muted);font-size:13px;font-variant-numeric:tabular-nums;min-height:18px}
+  .bar{height:8px;background:var(--chip);border-radius:5px;overflow:hidden;margin-top:10px}
+  .bar>i{display:block;height:100%;width:0;background:var(--accent);transition:width .25s}
+  .actions{display:flex;justify-content:center;gap:12px;margin:18px 0 6px}
+  .statusbar{color:var(--muted);text-align:center;min-height:18px}
+  .modal{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:center;
+    justify-content:center;padding:20px;z-index:10}
+  .modal.on{display:flex}
+  .sheet{background:var(--card);border-radius:14px;max-width:960px;width:100%;max-height:88vh;
+    overflow:auto;padding:20px 22px}
+  .sheet h2{margin:0 0 12px;font-size:17px}
+  .set-grid{display:grid;grid-template-columns:auto 1fr;gap:12px 14px;align-items:center}
+  .set-grid h3{grid-column:1/3;margin:12px 0 0;font-size:13px;color:var(--muted);
+    text-transform:uppercase;letter-spacing:.4px}
+  .set-grid input[type=text],.set-grid input[type=number],.set-grid select{
+    font:inherit;padding:7px 9px;border:1px solid var(--line);border-radius:7px;
+    background:var(--bg);color:var(--ink);width:100%}
+  .set-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:18px}
+  .scopes{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .scopes h3{margin:0 0 6px;font-size:14px}
+  .scopes img{width:100%;border-radius:8px;background:#000;display:block;margin-bottom:8px}
+  .hint{color:var(--muted);font-size:13px;margin-top:8px;line-height:1.5}
+  .row-inline{display:flex;gap:10px;align-items:center}
+</style>
+</head>
+<body>
+<header>
+  <h1>🎬 8-bit → 10-bit Converter</h1>
+  <p>Debands gradients and re-encodes to true 10-bit · batch-capable</p>
+</header>
+<main>
+  <div class="toolbar">
+    <button onclick="pick('files')">＋ Add files</button>
+    <button onclick="pick('folder')">📁 Add folder</button>
+    <button class="ghost" onclick="removeSel()">Remove</button>
+    <button class="ghost" onclick="clearQueue()">Clear</button>
+    <span class="spacer"></span>
+    <button class="ghost" onclick="openScopes()">📊 Preview scopes</button>
+    <button class="ghost" onclick="openSettings()">⚙ Settings</button>
+  </div>
+
+  <div class="card queue" id="queue"></div>
+
+  <div class="options">
+    <div><label>Format</label>
+      <span class="seg" id="segMode">
+        <button data-v="HEVC (smaller, delivery)" class="on">HEVC</button>
+        <button data-v="ProRes 4444 (grading, huge file)">ProRes 4444</button>
+      </span>
+    </div>
+    <div><label>Deband</label>
+      <span class="seg" id="segStr">
+        <button data-v="Low">Low</button>
+        <button data-v="Medium" class="on">Medium</button>
+        <button data-v="High">High</button>
+        <button data-v="Custom">Custom</button>
+      </span>
+    </div>
+  </div>
+
+  <div class="card now">
+    <div class="lbl">NOW RUNNING</div>
+    <div class="file" id="nowFile">—</div>
+    <div class="stats" id="nowStats">idle</div>
+    <div class="bar"><i id="bar"></i></div>
+  </div>
+
+  <div class="actions">
+    <button class="primary" id="btnConvert" onclick="convert()" disabled>Convert</button>
+    <button class="danger" id="btnCancel" onclick="cancel()" disabled>Cancel</button>
+  </div>
+  <div class="statusbar" id="status">Add files or a folder to begin.</div>
+</main>
+
+<div class="modal" id="mSettings"><div class="sheet">
+  <h2>Settings</h2>
+  <div class="set-grid">
+    <h3>Output</h3>
+    <label>Save to</label>
+    <select id="st_dest_mode"><option value="same">Next to each source</option>
+      <option value="custom">A specific folder</option></select>
+    <label>Folder</label>
+    <div class="row-inline"><input type="text" id="st_dest_dir" placeholder="Choose a folder…">
+      <button class="ghost" onclick="pickDest()">Browse…</button></div>
+    <label>Filename suffix</label><input type="text" id="st_suffix">
+    <label>If output exists</label>
+    <select id="st_on_exists"><option value="skip">Skip</option>
+      <option value="overwrite">Overwrite</option></select>
+    <h3>Quality (HEVC only)</h3>
+    <label>CRF (lower = better)</label><input type="number" id="st_crf" min="0" max="51">
+    <label>Encoder preset</label><select id="st_preset"></select>
+    <h3>Deband &amp; dither</h3>
+    <label>Deband range</label><input type="number" id="st_deband_range" min="1" max="64">
+    <label>Deband blur</label>
+    <select id="st_deband_blur"><option value="true">On</option><option value="false">Off</option></select>
+    <label>Dither amount</label><input type="number" id="st_dither" min="0" max="20">
+    <label>Custom threshold</label><input type="text" id="st_thr_custom">
+  </div>
+  <div class="set-actions">
+    <button class="ghost" onclick="closeModal('mSettings')">Cancel</button>
+    <button class="primary" style="padding:9px 22px;font-size:14px" onclick="saveSettings()">Save</button>
+  </div>
+</div></div>
+
+<div class="modal" id="mScopes"><div class="sheet">
+  <h2 id="scopesTitle">Scopes</h2>
+  <div id="scopesBody" class="hint">Rendering…</div>
+  <div class="set-actions"><button class="ghost" onclick="closeModal('mScopes')">Close</button></div>
+</div></div>
+
+<script>
+const API = "";
+let queue = [];            // [{path,name,status,pct}]
+let running = false;
+let mode = "HEVC (smaller, delivery)";
+let strength = "Medium";
+
+function j(url, opts){ return fetch(API+url, opts).then(r=>r.json()); }
+function setStatus(t){ document.getElementById("status").textContent = t; }
+
+function segInit(id, cb){
+  document.getElementById(id).querySelectorAll("button").forEach(b=>{
+    b.onclick=()=>{ b.parentElement.querySelectorAll("button").forEach(x=>x.classList.remove("on"));
+      b.classList.add("on"); cb(b.dataset.v); };
+  });
+}
+segInit("segMode", v=>mode=v);
+segInit("segStr", v=>strength=v);
+
+function renderQueue(items){
+  const q=document.getElementById("queue");
+  if(!items.length){ q.innerHTML='<div class="empty">Add files or a whole folder to begin.<br>'
+    +'Each file is converted to <b>NAME_10bit</b> next to the original (or a folder you choose).</div>'; return; }
+  q.innerHTML="";
+  items.forEach((it,i)=>{
+    const r=document.createElement("div"); r.className="row";
+    const st=it.status||"Queued";
+    r.innerHTML=`<input type="checkbox" data-i="${i}" ${running?'disabled':''}>
+      <span class="name" title="${it.path||''}">${it.name}</span>
+      <span class="status s-${st}">${st}</span>
+      <span class="pct">${it.pct||""}</span>`;
+    q.appendChild(r);
+  });
+}
+
+async function pick(kind){
+  setStatus("Opening picker…");
+  const items = await j("/api/"+(kind==="files"?"pick-files":"pick-folder"),{method:"POST"});
+  let added=0;
+  items.forEach(it=>{ if(!queue.some(q=>q.path===it.path)){ queue.push({...it,status:"Queued",pct:""}); added++; }});
+  renderQueue(queue); refreshConvert();
+  setStatus(added?`${queue.length} file(s) queued.`:"Nothing added.");
+}
+function removeSel(){
+  const checks=[...document.querySelectorAll("#queue input:checked")].map(c=>+c.dataset.i);
+  queue=queue.filter((_,i)=>!checks.includes(i)); renderQueue(queue); refreshConvert();
+}
+function clearQueue(){ queue=[]; renderQueue(queue); refreshConvert(); setStatus("Queue cleared."); }
+function refreshConvert(){ document.getElementById("btnConvert").disabled = running || !queue.length; }
+
+async function convert(){
+  if(!queue.length) return;
+  const r=await j("/api/convert",{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({items:queue,mode,strength})});
+  if(r.error){ setStatus("Error: "+r.error); return; }
+  running=true; setControls(); poll();
+}
+async function cancel(){ await fetch(API+"/api/cancel",{method:"POST"}); setStatus("Cancelling…");
+  document.getElementById("btnCancel").disabled=true; }
+function setControls(){
+  document.getElementById("btnConvert").disabled = running || !queue.length;
+  document.getElementById("btnCancel").disabled = !running;
+}
+async function poll(){
+  const s=await j("/api/status");
+  running=s.running;
+  if(s.items && s.items.length){ queue=s.items; renderQueue(queue); }
+  document.getElementById("nowFile").textContent=s.now.file;
+  const n=s.now;
+  document.getElementById("nowStats").textContent = running
+    ? `${n.pct}%  •  frame ${n.frame||"?"}  •  ${n.fps||"?"} fps  •  ${n.speed||"?"}  •  ETA ${n.eta}`
+    : "idle";
+  document.getElementById("bar").style.width=(running?n.pct:0)+"%";
+  if(s.summary && !running){ setStatus(s.summary); }
+  setControls();
+  if(running) setTimeout(poll,500);
+  else document.querySelectorAll("#queue input").forEach(c=>c.disabled=false);
+}
+
+// ---- settings ----
+async function openSettings(){
+  const s=await j("/api/settings");
+  const P=document.getElementById("st_preset");
+  if(!P.options.length){["ultrafast","superfast","veryfast","faster","fast","medium","slow","slower","veryslow"]
+    .forEach(v=>P.add(new Option(v,v)));}
+  st_dest_mode.value=s.dest_mode; st_dest_dir.value=s.dest_dir; st_suffix.value=s.suffix;
+  st_on_exists.value=s.on_exists; st_crf.value=s.crf; st_preset.value=s.preset;
+  st_deband_range.value=s.deband_range; st_deband_blur.value=String(s.deband_blur);
+  st_dither.value=s.dither; st_thr_custom.value=s.thr_custom;
+  document.getElementById("mSettings").classList.add("on");
+}
+async function pickDest(){
+  const items=await j("/api/pick-folder",{method:"POST"});
+  // pick-folder returns files; derive the folder from the first, else ask again
+  if(items.length){ st_dest_dir.value=items[0].path.replace(/\/[^/]*$/,''); st_dest_mode.value="custom"; }
+}
+async function saveSettings(){
+  const body={dest_mode:st_dest_mode.value,dest_dir:st_dest_dir.value.trim(),
+    suffix:st_suffix.value.trim()||"_10bit",on_exists:st_on_exists.value,
+    crf:+st_crf.value,preset:st_preset.value,deband_range:+st_deband_range.value,
+    deband_blur:st_deband_blur.value==="true",dither:+st_dither.value,
+    thr_custom:st_thr_custom.value.trim()||"0.03"};
+  if(body.dest_mode==="custom" && !body.dest_dir){ alert("Choose an output folder, or switch back to “Next to each source”."); return; }
+  await j("/api/settings",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+  closeModal("mSettings"); setStatus("Settings saved.");
+}
+function closeModal(id){ document.getElementById(id).classList.remove("on"); }
+
+// ---- scopes ----
+async function openScopes(){
+  const sel=[...document.querySelectorAll("#queue input:checked")].map(c=>+c.dataset.i);
+  const target = sel.length? queue[sel[0]] : queue[0];
+  if(!target){ setStatus("Add (or tick) a file first, then Preview scopes."); return; }
+  document.getElementById("scopesTitle").textContent="Scopes — "+target.name;
+  document.getElementById("scopesBody").innerHTML="Rendering scopes…";
+  document.getElementById("mScopes").classList.add("on");
+  const r=await j("/api/scopes",{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({path:target.path,strength})});
+  if(r.error){ document.getElementById("scopesBody").textContent="Error: "+r.error; return; }
+  const url=w=>`${API}/api/scope?token=${r.token}&which=${w}`;
+  document.getElementById("scopesBody").innerHTML=`
+    <div class="scopes">
+      <div><h3>Source (8-bit)</h3><img src="${url('src_thumb')}"><img src="${url('src_hist')}"></div>
+      <div><h3 style="color:var(--ok)">After (deband + dither · ${strength})</h3>
+        <img src="${url('aft_thumb')}"><img src="${url('aft_hist')}"></div>
+    </div>
+    <div class="hint">Histogram: banding shows as a comb (spikes with gaps). After debanding the
+      gaps fill in and gradients read smooth. Adjust Deband strength and re-open to compare.</div>`;
+}
+
+renderQueue(queue);
+</script>
+</body>
+</html>

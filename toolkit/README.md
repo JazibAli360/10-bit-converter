@@ -73,18 +73,24 @@ prompt level, not with a bit-depth conversion.
 Double-click to install everything needed and launch the GUI. See Quick start
 above.
 
-### `10bit_converter_gui.py`
-The GUI. A **queue table** you fill with multiple files or a whole folder —
-each row shows its status and progress %. A format dropdown (HEVC vs ProRes
-4444), a **deband-strength dropdown** (Low/Medium/High/Custom), a **live
-"Now running" panel** (%, frame, fps, speed, ETA), a **Cancel button** that
-stops immediately (partial output discarded), and a **Settings…** dialog
-(output folder, suffix, skip/overwrite, CRF, preset, deband range/blur,
-dither, custom threshold — persisted between launches). Run directly with:
+### `server.py` + `index.html`  (the app)
+The converter runs as a small **local web app** — no GUI toolkit, Python
+stdlib only. `Start_Here.command` starts it and opens your browser to
+`http://127.0.0.1:8766`. It has a **queue** (each row shows status + live %),
+**Format** (HEVC / ProRes 4444) and **Deband** (Low/Medium/High/Custom)
+controls, a **live "Now running"** readout (%, frame, fps, speed, ETA), a
+**Cancel** button (stops instantly, partial output discarded), a **Settings**
+dialog (output folder, suffix, skip/overwrite, CRF, preset, deband range/blur,
+dither, custom threshold — persisted), and **Preview scopes** (source vs
+processed frame + histogram, so you can see the debanding before a full encode).
+Files/folders are chosen with native macOS dialogs. Run directly with:
 ```bash
-python3 10bit_converter_gui.py
+python3 server.py
 ```
-(Normally you don't need this — `Start_Here.command` launches it for you.)
+> Why a browser instead of a native window? The macOS system Tk (used by
+> Python's Tkinter) is deprecated and renders blank on current macOS, so a
+> Tkinter GUI is unreliable. A local web app avoids that entirely and needs
+> no extra install.
 
 ### `8bit_to_10bit.command`
 Mac double-click / drag-and-drop tool. Drop **one or more files, or a folder**
