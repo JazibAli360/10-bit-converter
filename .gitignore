@@ -16,3 +16,6 @@ toolkit/.10bit_converter_settings.json
 
 # Machine-specific preview config
 .claude/launch.json
+
+# Release build output
+dist/

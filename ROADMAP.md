@@ -1,9 +1,14 @@
 # 10-bit Converter — Roadmap
 
 Planning doc for the 8-bit → 10-bit toolkit. Internal (not shipped in the
-release zip). Current shipping version: **v12** (browser app: deband + dither +
-true 10-bit, batch queue, scopes, A/B compare, verify, bitrate, deflicker,
-16-bit max quality, audio copy, colour passthrough, drag-and-drop).
+release zip).
+
+**Status:** Phase 1–3 shipped as of **v16** (only 1.4 `.app` launcher deferred).
+Build a release with `./build_release.sh` → `dist/10bit_converter_<ver>.zip`.
+Done: resilient server, temp cleanup, surfaced errors, batch progress, reveal,
+presets, in-app help + credit, live sliders, size estimates, bitrate zones,
+denoise, two-pass. Remaining: `.app` launcher (needs Apple Dev acct for
+frictionless), the "additional candidates", and Phase 4 (Windows/Linux).
 
 ## Guiding principles
 - **No AI, no reinterpretation.** Nothing that invents, removes, or reinterprets
