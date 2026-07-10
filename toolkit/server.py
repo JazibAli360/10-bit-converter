@@ -342,7 +342,7 @@ def probe_info(path):
     try:
         out = subprocess.run(
             ["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries",
-             "stream=width,height,pix_fmt,avg_frame_rate:format=duration,bit_rate",
+             "stream=width,height,pix_fmt,avg_frame_rate,codec_name:format=duration,bit_rate",
              "-of", "json", path], capture_output=True, text=True, check=True).stdout
         d = json.loads(out)
         st = (d.get("streams") or [{}])[0]
@@ -360,11 +360,13 @@ def probe_info(path):
         if "/" in r:
             n, dn = r.split("/")
             fps = (float(n) / float(dn)) if float(dn or 0) else 0.0
+        pix_fmt = st.get("pix_fmt", "")
         return {"dur": round(dur, 2), "kbps": kbps, "width": st.get("width", 0),
                 "height": st.get("height", 0), "fps": round(fps, 2),
-                "pix_fmt": st.get("pix_fmt", "")}
+                "pix_fmt": pix_fmt, "codec": st.get("codec_name", ""),
+                "bits": pixfmt_bits(pix_fmt) if pix_fmt else 0}
     except Exception:
-        return {"dur": 0, "kbps": 0, "width": 0, "height": 0, "fps": 0, "pix_fmt": ""}
+        return {"dur": 0, "kbps": 0, "width": 0, "height": 0, "fps": 0, "pix_fmt": "", "codec": "", "bits": 0}
 
 
 def item_for(path):

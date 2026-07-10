@@ -404,8 +404,11 @@ function renderQueue(items){
   items.forEach((it,i)=>{
     const r=document.createElement("div"); r.className="row";
     const st=it.status||"Queued";
+    const srcInfo=(it.width&&it.height)
+      ? `${it.width}×${it.height} · ${(it.codec||"?").toUpperCase()} · ${it.bits||8}-bit · ${it.fps||"?"} fps · ${it.kbps?(it.kbps/1000).toFixed(1)+" Mbps":"?"} · ${fmtT(it.dur)}\n${it.path||""}`
+      : (it.path||"");
     r.innerHTML=`<input type="checkbox" data-i="${i}" ${running?'disabled':''}>
-      <span class="name-wrap"><span class="name" title="${it.path||''}">${it.name}</span>
+      <span class="name-wrap"><span class="name" title="${srcInfo.replace(/"/g,'&quot;')}">${it.name}</span>
         ${it.info?`<span class="info">${it.info}</span>`:''}</span>
       ${(st==='Done'&&it.out)?`<button class="mini" data-cmp="${i}">Compare</button><button class="mini" data-rev="${i}">Reveal</button>`:''}
       ${(st==='Failed'&&it.error)?`<button class="mini" data-err="${i}">why?</button>`:''}
