@@ -9,7 +9,12 @@
       "Bash(git add *)",
       "Bash(git reset *)",
       "Bash(git commit -q -m 'v1: original 8bit->10bit toolkit \\(sh, .command, GUI, README\\) *)",
-      "Bash(git tag *)"
+      "Bash(git tag *)",
+      "Bash(git commit -q -m 'v2: one-click launcher + batch + real progress + deband strength *)",
+      "Bash(ls -la *.mp4 *.mov *.mkv)",
+      "Bash(find . -maxdepth 2 -iname \"*test*\")",
+      "Bash(curl -sI --max-time 10 https://evermeet.cx/ffmpeg/)",
+      "Bash(curl -sI --max-time 10 https://www.osxexperts.net/)"
     ]
   }
 }

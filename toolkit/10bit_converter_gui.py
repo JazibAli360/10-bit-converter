@@ -28,6 +28,7 @@ FEATURES:
 
 import json
 import os
+import platform
 import re
 import shutil
 import subprocess
@@ -36,6 +37,20 @@ import tkinter as tk
 from tkinter import filedialog, ttk, messagebox
 
 VIDEO_EXTS = (".mp4", ".mov", ".mkv", ".avi", ".m4v", ".webm", ".mpg", ".mpeg", ".ts")
+
+
+def ensure_bundled_ffmpeg():
+    """Prefer the bundled ffmpeg/ffprobe (bin/<arch>) over any system install.
+    Clears Gatekeeper quarantine on first run. No-op if the bundle is absent
+    (then the app falls back to system ffmpeg on PATH)."""
+    d = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bin", platform.machine())
+    if os.path.isfile(os.path.join(d, "ffmpeg")) and os.path.isfile(os.path.join(d, "ffprobe")):
+        try:
+            subprocess.run(["xattr", "-dr", "com.apple.quarantine", d],
+                           capture_output=True)
+        except Exception:
+            pass
+        os.environ["PATH"] = d + os.pathsep + os.environ.get("PATH", "")
 
 # Deband threshold per named strength level (applied to all three planes).
 STRENGTH_THR = {
@@ -645,6 +660,7 @@ class SettingsDialog(tk.Toplevel):
 
 
 if __name__ == "__main__":
+    ensure_bundled_ffmpeg()
     try:
         from tkinterdnd2 import TkinterDnD
         root = TkinterDnD.Tk()

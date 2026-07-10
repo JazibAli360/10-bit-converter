@@ -39,6 +39,10 @@ prompt level, not with a bit-depth conversion.
 
 ## What's new in this version
 
+- **Bundled ffmpeg — zero install** — a static `ffmpeg`/`ffprobe` for Apple
+  Silicon ships inside `bin/arm64/`. Every tool prefers it, so there's nothing
+  to install and no network needed. (Intel Macs fall back to a system/Homebrew
+  ffmpeg; `Start_Here` offers to install it.)
 - **One-click setup + launch** — `Start_Here.command` installs dependencies
   and opens the app for you.
 - **Batch / folder processing** — point any tool at a folder (or drop/select

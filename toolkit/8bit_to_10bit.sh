@@ -37,6 +37,18 @@
 set -euo pipefail
 
 # ---------------------------------------------------------------------------
+# Prefer the bundled ffmpeg/ffprobe (toolkit/bin/<arch>), fall back to system.
+# No install needed when the bundle is present. Clears Gatekeeper quarantine
+# on first run (harmless once cleared / if not quarantined).
+# ---------------------------------------------------------------------------
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+BUNDLED_BIN="$SCRIPT_DIR/bin/$(uname -m)"
+if [[ -x "$BUNDLED_BIN/ffmpeg" && -x "$BUNDLED_BIN/ffprobe" ]]; then
+    xattr -dr com.apple.quarantine "$BUNDLED_BIN" 2>/dev/null || true
+    export PATH="$BUNDLED_BIN:$PATH"
+fi
+
+# ---------------------------------------------------------------------------
 # Defaults
 # ---------------------------------------------------------------------------
 MODE="hevc"

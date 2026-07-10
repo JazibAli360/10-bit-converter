@@ -39,34 +39,34 @@ if [[ "$(uname)" != "Darwin" ]]; then
   warn "with your package manager, then run:  python3 10bit_converter_gui.py"
 fi
 
-# --- 2. Homebrew ---
-if ! command -v brew >/dev/null 2>&1; then
-  warn "Homebrew (the installer for ffmpeg) is not installed."
-  if ask "Install Homebrew now?"; then
-    say "Installing Homebrew — follow any prompts it shows…"
-    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-    # Make brew available on Apple Silicon in this session
-    [[ -x /opt/homebrew/bin/brew ]] && eval "$(/opt/homebrew/bin/brew shellenv)"
-    [[ -x /usr/local/bin/brew ]] && eval "$(/usr/local/bin/brew shellenv)"
-  else
-    err "Can't continue without Homebrew. Install it from https://brew.sh then re-run."
-    read -r -p "Press Return to close." </dev/tty; exit 1
-  fi
+# --- 2. ffmpeg / ffprobe: prefer the BUNDLED build (zero install) ---
+BUNDLED_BIN="$(pwd)/bin/$(uname -m)"
+if [[ -x "$BUNDLED_BIN/ffmpeg" && -x "$BUNDLED_BIN/ffprobe" ]]; then
+  # Clear Gatekeeper quarantine so the bundled binaries run after a download.
+  xattr -dr com.apple.quarantine "$(pwd)" 2>/dev/null || true
+  export PATH="$BUNDLED_BIN:$PATH"
+  ok "Using bundled ffmpeg ($(ffmpeg -version 2>/dev/null | head -1 | awk '{print $3}')) — no install needed."
+elif command -v ffmpeg >/dev/null 2>&1 && command -v ffprobe >/dev/null 2>&1; then
+  ok "ffmpeg found on your system ($(ffmpeg -version | head -1 | awk '{print $3}'))."
 else
-  ok "Homebrew found."
-fi
-
-# --- 3. ffmpeg / ffprobe ---
-if ! command -v ffmpeg >/dev/null 2>&1 || ! command -v ffprobe >/dev/null 2>&1; then
-  warn "ffmpeg is not installed (needed to do the conversion)."
+  warn "No bundled ffmpeg for this Mac's architecture ($(uname -m)) and none installed."
+  if ! command -v brew >/dev/null 2>&1; then
+    if ask "Install Homebrew (needed to install ffmpeg)?"; then
+      say "Installing Homebrew — follow any prompts it shows…"
+      /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+      [[ -x /opt/homebrew/bin/brew ]] && eval "$(/opt/homebrew/bin/brew shellenv)"
+      [[ -x /usr/local/bin/brew ]] && eval "$(/usr/local/bin/brew shellenv)"
+    else
+      err "Can't continue without ffmpeg. Exiting."
+      read -r -p "Press Return to close." </dev/tty; exit 1
+    fi
+  fi
   if ask "Install ffmpeg now?"; then
     brew install ffmpeg
   else
     err "Can't convert without ffmpeg. Exiting."
     read -r -p "Press Return to close." </dev/tty; exit 1
   fi
-else
-  ok "ffmpeg found ($(ffmpeg -version | head -1 | awk '{print $3}'))."
 fi
 
 # --- 4. Python 3 + Tk (for the GUI) ---

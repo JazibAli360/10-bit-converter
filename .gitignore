@@ -1,3 +1,15 @@
 __pycache__/
 *.pyc
 .DS_Store
+
+# Bundled ffmpeg binaries (vendored, not source)
+toolkit/bin/
+
+# Test media & runtime artifacts (not source)
+*.mp4
+*.mov
+*.mkv
+*.avi
+*.m4v
+test1/
+toolkit/.10bit_converter_settings.json

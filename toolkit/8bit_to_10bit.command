@@ -17,6 +17,13 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
+# --- Prefer bundled ffmpeg/ffprobe (bin/<arch>), fall back to system ---
+BUNDLED_BIN="$(pwd)/bin/$(uname -m)"
+if [[ -x "$BUNDLED_BIN/ffmpeg" && -x "$BUNDLED_BIN/ffprobe" ]]; then
+  xattr -dr com.apple.quarantine "$BUNDLED_BIN" 2>/dev/null || true
+  export PATH="$BUNDLED_BIN:$PATH"
+fi
+
 # --- Check ffmpeg ---
 if ! command -v ffmpeg >/dev/null 2>&1; then
   osascript -e 'display alert "ffmpeg not found" message "Install it by opening Terminal and running:\n\nbrew install ffmpeg\n\n(If you dont have Homebrew: install it first from brew.sh)"'
