@@ -103,13 +103,12 @@ Options:
 
 ## One-time setup (if you're not using Start_Here)
 
+ffmpeg is bundled, so you only need Python + the GUI toolkit:
 ```bash
-brew install ffmpeg python-tk
+brew install python-tk        # Python 3 with Tk (skip if you already have it)
+pip3 install customtkinter    # the modern GUI toolkit
 ```
-Optional, for real drag-and-drop in the GUI:
-```bash
-pip3 install tkinterdnd2
-```
+(On Intel Macs with no bundled ffmpeg, also: `brew install ffmpeg`.)
 
 ## Deband strength — what the levels mean
 
