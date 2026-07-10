@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(unzip -o \"/Users/vyro/Downloads/10bit_converter_toolkit.zip\" -d .)",
+      "Bash(unzip -o \"/Users/vyro/Library/Application Support/Claude/local-agent-mode-sessions/a5d51978-db70-49f2-901f-9d405237a9a5/d82c4e7e-5e4f-4d0a-8b04-cc06d8dc47cb/local_8a26344b-27cc-412b-8cfa-31945f6e0289/outputs/new-10bit_converter_toolkit.zip\" -d updated)",
+      "Bash(echo \"=== Downloads \\(zips\\) ===\" && ls -lat ~/Downloads/*.zip 2>/dev/null | head -20; echo; echo \"=== Desktop project dir ===\" && ls -laR \"/Users/vyro/Desktop/Ffmpeg 8bit to 10bit solution\" | head -40; echo; echo \"=== agent-mode outputs dirs ===\" && find \"/Users/vyro/Library/Application Support/Claude/local-agent-mode-sessions\" -iname \"*.zip\" -o -iname \"*toolkit*\" 2>/dev/null | head -40)",
+      "Bash(git init *)",
+      "Bash(git config *)",
+      "Bash(git add *)",
+      "Bash(git reset *)",
+      "Bash(git commit -q -m 'v1: original 8bit->10bit toolkit \\(sh, .command, GUI, README\\) *)",
+      "Bash(git tag *)"
+    ]
+  }
+}
