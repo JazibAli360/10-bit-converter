@@ -544,26 +544,31 @@ def _emit(cur, dur, item_idx):
 
 # ------------------------------------------------------------------ scopes
 SCOPES = {}   # token -> dir
+FILMSTRIPS = {}  # token -> dir
 
 
-def render_scopes(in_path, strength, settings):
+def render_scopes(in_path, strength, settings, t=None):
     thr = STRENGTH_THR.get(strength) or str(settings.get("thr_custom", "0.03"))
     chain = deband_noise_chain(thr, settings["deband_range"], settings["deband_blur"],
                                settings["dither"], settings.get("deflicker", False),
                                settings.get("max_quality", False), settings.get("denoise", "off"))
     outdir = tempfile.mkdtemp(prefix="scopes_")
     dur = probe_duration(in_path)
-    t = max(0.0, dur * 0.4) if dur else 1.0
-    # The `histogram` filter crashes ffmpeg (SIGSEGV) when fed a 16-bit 4:4:4
-    # frame (Max quality mode inserts format=yuv444p16le). Preview scopes are
-    # for visual comparison only, so downconvert to 8-bit right before
-    # `histogram` — this doesn't affect the "after" thumbnail or the real
+    if t is None:
+        t = max(0.0, dur * 0.4) if dur else 1.0
+    t = max(0.0, min(float(t), max(0.0, dur - 0.05))) if dur else float(t)
+    # The `histogram`/`waveform` filters can SIGSEGV on some pixel formats
+    # (e.g. the 16-bit 4:4:4 frame Max quality inserts, or raw RGBA). Preview
+    # scopes are for visual comparison only, so downconvert to 8-bit right
+    # before them — this doesn't affect the "after" thumbnail or the real
     # encode, only this diagnostic view.
     jobs = {
         "src_thumb": "scale=440:-2",
         "src_hist": "histogram=level_height=170,scale=440:-2",
+        "src_wave": "format=yuv420p,waveform=mode=column:intensity=0.6,scale=440:-2",
         "aft_thumb": f"{chain},scale=440:-2",
         "aft_hist": f"{chain},format=yuv420p,histogram=level_height=170,scale=440:-2",
+        "aft_wave": f"{chain},format=yuv420p,waveform=mode=column:intensity=0.6,scale=440:-2",
     }
     errors = {}
     for which, vf in jobs.items():
@@ -575,18 +580,58 @@ def render_scopes(in_path, strength, settings):
             errors[which] = r.stderr.strip() or f"ffmpeg exited {r.returncode}"
     token = os.path.basename(outdir)
     SCOPES[token] = outdir
-    return token, errors
+    return token, errors, t, dur
+
+
+def render_filmstrip(in_path, count=8):
+    """N evenly-spaced thumbnails across the clip so the user can click to
+    pick the frame most likely to show banding, instead of a fixed timestamp."""
+    outdir = tempfile.mkdtemp(prefix="strip_")
+    dur = probe_duration(in_path)
+    times = []
+    if dur > 0:
+        for i in range(count):
+            times.append(round(dur * (i + 0.5) / count, 2))
+    else:
+        times = [1.0]
+    for i, t in enumerate(times):
+        subprocess.run(["ffmpeg", "-y", "-v", "error", "-ss", f"{t}", "-i", in_path,
+                        "-frames:v", "1", "-vf", "scale=160:-2",
+                        os.path.join(outdir, f"f{i}.png")], capture_output=True)
+    token = os.path.basename(outdir)
+    FILMSTRIPS[token] = outdir
+    return token, times
 
 
 COMPARE = {}   # token -> dir
 
 
-def render_compare(src, out, t):
+def render_compare(src, out, t, zoom=None):
+    """zoom: optional {cx, cy, factor} — cx/cy are 0..1 fractions of frame
+    (center of the region to zoom into), factor is how much to zoom in (e.g. 3
+    = view 1/3 width/height, magnified back up to display size). Banding is
+    usually only visible in a small region, so a full-frame view often hides it."""
     d = tempfile.mkdtemp(prefix="cmp_")
+    crop_vf = ""
+    if zoom and zoom.get("factor", 1) > 1:
+        f = max(1.0, float(zoom["factor"]))
+        cx, cy = float(zoom.get("cx", 0.5)), float(zoom.get("cy", 0.5))
+        w_frac, h_frac = 1.0 / f, 1.0 / f
+        x_frac = max(0.0, min(1 - w_frac, cx - w_frac / 2))
+        y_frac = max(0.0, min(1 - h_frac, cy - h_frac / 2))
+        crop_vf = (f"crop=iw*{w_frac}:ih*{h_frac}:iw*{x_frac}:ih*{y_frac},")
     for which, path in (("before", src), ("after", out)):
         subprocess.run(["ffmpeg", "-y", "-v", "error", "-ss", f"{t}", "-i", path,
-                        "-frames:v", "1", "-vf", "scale=1000:-2",
+                        "-frames:v", "1", "-vf", f"{crop_vf}scale=1000:-2",
                         os.path.join(d, which + ".png")], capture_output=True)
+    # Amplified difference view: |after - before| * gain, so genuinely-changed
+    # pixels (deband/dither) stand out. Honestly labelled as exaggerated in the UI.
+    subprocess.run(["ffmpeg", "-y", "-v", "error",
+                    "-ss", f"{t}", "-i", src, "-ss", f"{t}", "-i", out,
+                    "-frames:v", "1", "-filter_complex",
+                    f"[0:v]{crop_vf}scale=1000:-2[a];[1:v]{crop_vf}scale=1000:-2[b];"
+                    f"[a][b]blend=all_mode=difference,lutrgb=r=val*8:g=val*8:b=val*8",
+                    os.path.join(d, "diff.png")], capture_output=True)
     token = os.path.basename(d)
     COMPARE[token] = d
     return token
@@ -629,11 +674,12 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, JOB.snapshot())
         elif u.path == "/api/settings":
             self._send(200, load_settings())
-        elif u.path in ("/api/scope", "/api/compare-image"):
+        elif u.path in ("/api/scope", "/api/compare-image", "/api/filmstrip-image"):
             q = urllib.parse.parse_qs(u.query)
             token = q.get("token", [""])[0]
             which = q.get("which", [""])[0]
-            store = SCOPES if u.path == "/api/scope" else COMPARE
+            store = {"/api/scope": SCOPES, "/api/compare-image": COMPARE,
+                     "/api/filmstrip-image": FILMSTRIPS}[u.path]
             d = store.get(token)
             fp = os.path.join(d, os.path.basename(which) + ".png") if d else None
             if fp and os.path.isfile(fp):
@@ -715,8 +761,18 @@ class Handler(BaseHTTPRequestHandler):
             if not path or not os.path.isfile(path):
                 self._send(400, {"error": "file not found"})
                 return
-            token, errors = render_scopes(path, data.get("strength", "Medium"), load_settings())
-            self._send(200, {"token": token, "name": os.path.basename(path), "errors": errors})
+            token, errors, t, dur = render_scopes(path, data.get("strength", "Medium"),
+                                                   load_settings(), data.get("t"))
+            self._send(200, {"token": token, "name": os.path.basename(path),
+                             "errors": errors, "t": t, "duration": dur})
+        elif u.path == "/api/filmstrip":
+            data = self._read_json()
+            path = data.get("path")
+            if not path or not os.path.isfile(path):
+                self._send(400, {"error": "file not found"})
+                return
+            token, times = render_filmstrip(path, int(data.get("count", 8)))
+            self._send(200, {"token": token, "times": times})
         elif u.path == "/api/compare":
             data = self._read_json()
             src, out = data.get("src"), data.get("out")
@@ -730,15 +786,15 @@ class Handler(BaseHTTPRequestHandler):
             t = float(t)
             if dur:
                 t = max(0.0, min(t, max(0.0, dur - 0.05)))
-            token = render_compare(src, out, t)
+            token = render_compare(src, out, t, data.get("zoom"))
             self._send(200, {"token": token, "duration": dur, "t": t})
         else:
             self._send(404, {"error": "unknown"})
 
 
 def cleanup_temp():
-    """Remove intake uploads + scope/compare frame dirs on exit."""
-    for d in [INTAKE_DIR, *SCOPES.values(), *COMPARE.values()]:
+    """Remove intake uploads + scope/compare/filmstrip frame dirs on exit."""
+    for d in [INTAKE_DIR, *SCOPES.values(), *COMPARE.values(), *FILMSTRIPS.values()]:
         shutil.rmtree(d, ignore_errors=True)
 
 

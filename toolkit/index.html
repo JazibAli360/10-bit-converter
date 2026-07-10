@@ -81,6 +81,10 @@
   .slv{width:64px;text-align:right;color:var(--ink);font-variant-numeric:tabular-nums}
   input[type=range]{accent-color:var(--accent)}
   .zonebar{height:5px;border-radius:3px;margin-top:4px;background:var(--chip)}
+  .strip{display:flex;gap:4px;overflow-x:auto;margin-bottom:10px;padding-bottom:2px}
+  .strip img{height:56px;border-radius:6px;cursor:pointer;opacity:.7;border:2px solid transparent;flex-shrink:0}
+  .strip img:hover{opacity:1}
+  .strip img.sel{opacity:1;border-color:var(--accent)}
   .cmp{position:relative;width:100%;overflow:hidden;border-radius:8px;background:#000;user-select:none;touch-action:none}
   .cmp-img{display:block;width:100%;pointer-events:none}
   .cmp-before{position:absolute;top:0;left:0;height:100%;width:50%;overflow:hidden}
@@ -229,6 +233,7 @@
 
 <div class="modal" id="mScopes"><div class="sheet">
   <h2 id="scopesTitle">Scopes</h2>
+  <div id="scopesFilm" class="strip"></div>
   <div id="scopesBody" class="hint">Rendering…</div>
   <div class="set-actions"><button class="ghost" onclick="closeModal('mScopes')">Close</button></div>
 </div></div>
@@ -256,6 +261,11 @@
 
 <div class="modal" id="mCompare"><div class="sheet">
   <h2 id="cmpTitle">Compare</h2>
+  <div class="row-inline" style="margin-bottom:8px">
+    <button class="mini" id="cmpDiffBtn" onclick="toggleDiff()">Show difference (amplified)</button>
+    <button class="mini" id="cmpZoomBtn" onclick="resetZoom()" style="display:none">Reset zoom</button>
+    <span class="hint" style="margin:0">Double-click the image to zoom into that spot.</span>
+  </div>
   <div class="cmp" id="cmpWrap">
     <img id="cmpAfter" class="cmp-img" alt="after">
     <div class="cmp-before" id="cmpBeforeWrap"><img id="cmpBefore" class="cmp-img" alt="before"></div>
@@ -263,12 +273,13 @@
     <span class="cmp-tag cmp-tagL">Before · source</span>
     <span class="cmp-tag cmp-tagR">After · 10-bit</span>
   </div>
+  <img id="cmpDiff" style="display:none;width:100%;border-radius:8px;background:#000" alt="difference">
   <div class="row-inline" style="margin-top:12px">
     <span style="color:var(--muted)">Time</span>
     <input type="range" id="cmpTime" min="0" max="100" value="40" style="flex:1">
     <span id="cmpTimeLbl" style="color:var(--muted);width:56px;text-align:right">—</span>
   </div>
-  <div class="hint">Drag the divider to wipe between source and converted (same frame). Look at
+  <div class="hint" id="cmpHint">Drag the divider to wipe between source and converted (same frame). Look at
     smooth areas — skies, smoke, gradients — for banding.</div>
   <div class="set-actions"><button class="ghost" onclick="closeModal('mCompare')">Close</button></div>
 </div></div>
@@ -417,15 +428,38 @@ async function saveSettings(){
 function closeModal(id){ document.getElementById(id).classList.remove("on"); }
 
 // ---- scopes ----
+let scopesTarget=null;
 async function openScopes(){
   const sel=[...document.querySelectorAll("#queue input:checked")].map(c=>+c.dataset.i);
   const target = sel.length? queue[sel[0]] : queue[0];
   if(!target){ setStatus("Add (or tick) a file first, then Preview scopes."); return; }
+  scopesTarget=target;
   document.getElementById("scopesTitle").textContent="Scopes — "+target.name;
   document.getElementById("scopesBody").innerHTML="Rendering scopes…";
+  document.getElementById("scopesFilm").innerHTML="";
   document.getElementById("mScopes").classList.add("on");
+  renderScopesAt(null);
+  // Filmstrip: lets the user click through the clip to find the actual banded scene
+  // instead of being stuck at a fixed 40% timestamp.
+  const fs=await j("/api/filmstrip",{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({path:target.path,count:8})});
+  if(fs.token){
+    const bust=Date.now();
+    document.getElementById("scopesFilm").innerHTML = fs.times.map((t,i)=>
+      `<img data-t="${t}" src="${API}/api/filmstrip-image?token=${fs.token}&which=f${i}&_=${bust}" title="${fmtT(t)}">`
+    ).join("");
+  }
+}
+document.getElementById("scopesFilm").addEventListener("click",e=>{
+  const im=e.target.closest("img[data-t]"); if(!im) return;
+  document.querySelectorAll("#scopesFilm img").forEach(x=>x.classList.remove("sel"));
+  im.classList.add("sel");
+  renderScopesAt(+im.dataset.t);
+});
+async function renderScopesAt(t){
+  const target=scopesTarget; if(!target) return;
   const r=await j("/api/scopes",{method:"POST",headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({path:target.path,strength})});
+    body:JSON.stringify({path:target.path,strength,t})});
   if(r.error){ document.getElementById("scopesBody").textContent="Error: "+r.error; return; }
   const bust=Date.now();
   const url=w=>`${API}/api/scope?token=${r.token}&which=${w}&_=${bust}`;
@@ -435,34 +469,47 @@ async function openScopes(){
     : `<img src="${url(w)}" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'hint',textContent:'Image failed to load.'}))">`;
   document.getElementById("scopesBody").innerHTML=`
     <div class="scopes">
-      <div><h3>Source (8-bit)</h3>${cell('src_thumb')}${cell('src_hist')}</div>
-      <div><h3 style="color:var(--ok)">After (deband + dither · ${strength})</h3>
-        ${cell('aft_thumb')}${cell('aft_hist')}</div>
+      <div><h3>Source (8-bit)</h3>${cell('src_thumb')}
+        <div class="hint" style="margin:4px 0 2px">Histogram</div>${cell('src_hist')}
+        <div class="hint" style="margin:4px 0 2px">Waveform (luminance vs. position)</div>${cell('src_wave')}</div>
+      <div><h3 style="color:var(--ok)">After (deband + dither · ${strength})</h3>${cell('aft_thumb')}
+        <div class="hint" style="margin:4px 0 2px">Histogram</div>${cell('aft_hist')}
+        <div class="hint" style="margin:4px 0 2px">Waveform (luminance vs. position)</div>${cell('aft_wave')}</div>
     </div>
-    <div class="hint">Histogram: banding shows as a comb (spikes with gaps). After debanding the
-      gaps fill in and gradients read smooth. Adjust Deband strength and re-open to compare.</div>`;
+    <div class="hint">Histogram: banding shows as a comb (spikes with gaps) that fills in after
+      debanding. Waveform: banding shows as visible steps/terraces in the line that smooth out
+      after debanding. Click a filmstrip frame above to jump to a specific moment.</div>`;
 }
 
 // ---- A/B compare ----
-let cmpSrc, cmpOut, cmpDur=0, cmpTimer=null;
+let cmpSrc, cmpOut, cmpDur=0, cmpTimer=null, cmpZoom=null, cmpShowDiff=false, cmpLastT=null;
 function fmtT(s){s=Math.max(0,Math.round(s));return `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;}
 function setSplit(pct){pct=Math.max(3,Math.min(97,pct));cmpBeforeWrap.style.width=pct+"%";cmpHandle.style.left=pct+"%";}
+// t===undefined means "reuse whatever time we're already at" (zoom/diff toggles);
+// cmpLastT===null (only true before the first render) lets the server pick its
+// own default (~40% of duration) instead of us guessing before we know cmpDur.
 async function cmpRender(t){
+  if(t===undefined) t=cmpLastT;
   const r=await j("/api/compare",{method:"POST",headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({src:cmpSrc,out:cmpOut,t})});
+    body:JSON.stringify({src:cmpSrc,out:cmpOut,t,zoom:cmpZoom})});
   if(r.error){ document.getElementById("cmpTitle").textContent="Compare — "+r.error; return; }
-  cmpDur=r.duration||0;
+  cmpDur=r.duration||0; cmpLastT=r.t;
   const bust=Date.now();
   cmpAfter.src=`/api/compare-image?token=${r.token}&which=after&_=${bust}`;
   cmpBefore.src=`/api/compare-image?token=${r.token}&which=before&_=${bust}`;
+  document.getElementById("cmpDiff").src=`/api/compare-image?token=${r.token}&which=diff&_=${bust}`;
   cmpTimeLbl.textContent=cmpDur?`${fmtT(r.t)} / ${fmtT(cmpDur)}`:fmtT(r.t);
+  if(cmpDur) cmpTime.value=Math.round(r.t/cmpDur*100);
 }
 function openCompare(i){
   const it=queue[i]; if(!it||!it.out) return;
-  cmpSrc=it.path; cmpOut=it.out;
+  cmpSrc=it.path; cmpOut=it.out; cmpZoom=null; cmpShowDiff=false; cmpLastT=null;
+  document.getElementById("cmpZoomBtn").style.display="none";
+  document.getElementById("cmpDiffBtn").textContent="Show difference (amplified)";
+  cmpWrap.style.display="block"; document.getElementById("cmpDiff").style.display="none";
   document.getElementById("cmpTitle").textContent="Compare — "+it.name;
   document.getElementById("mCompare").classList.add("on");
-  setSplit(50); cmpTime.value=40; cmpRender(null);
+  setSplit(50); cmpRender(null); // explicit null -> server picks the default timestamp
 }
 cmpTime.addEventListener("input",()=>{
   if(!cmpDur) return;
@@ -470,6 +517,25 @@ cmpTime.addEventListener("input",()=>{
   const t=cmpTime.value/100*cmpDur;
   cmpTimeLbl.textContent=`${fmtT(t)} / ${fmtT(cmpDur)}`;
   cmpTimer=setTimeout(()=>cmpRender(t),180);
+});
+function toggleDiff(){
+  cmpShowDiff=!cmpShowDiff;
+  document.getElementById("cmpDiffBtn").textContent = cmpShowDiff? "Show wipe compare" : "Show difference (amplified)";
+  cmpWrap.style.display = cmpShowDiff? "none" : "block";
+  document.getElementById("cmpDiff").style.display = cmpShowDiff? "block" : "none";
+  document.getElementById("cmpHint").textContent = cmpShowDiff
+    ? "Amplified difference: brighter = more changed by deband/dither. Gain is exaggerated (x8) purely to make the effect visible — it is not what the output actually looks like."
+    : "Drag the divider to wipe between source and converted (same frame). Look at smooth areas — skies, smoke, gradients — for banding.";
+}
+function resetZoom(){ cmpZoom=null; document.getElementById("cmpZoomBtn").style.display="none"; cmpRender(); }
+// Double-click (not single click/drag, which already controls the wipe split)
+// zooms into that spot — banding usually only shows in a small region.
+cmpWrap.addEventListener("dblclick",e=>{
+  const r=cmpWrap.getBoundingClientRect();
+  const cx=(e.clientX-r.left)/r.width, cy=(e.clientY-r.top)/r.height;
+  cmpZoom={cx,cy,factor:3};
+  document.getElementById("cmpZoomBtn").style.display="inline-block";
+  cmpRender();
 });
 (function(){ // divider drag
   let drag=false;
