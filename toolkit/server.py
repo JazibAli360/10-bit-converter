@@ -90,6 +90,32 @@ def save_settings(s):
     return clean
 
 
+CUSTOM_PRESETS_PATH = os.path.join(HERE, ".10bit_custom_presets.json")
+# What a preset captures: the top-level Format/Deband/Bitrate picks plus every
+# processing setting (everything except output-location fields, which are
+# per-machine and shouldn't travel with a preset).
+PRESET_SETTINGS_KEYS = ["crf", "preset", "deband_range", "deband_blur", "dither", "thr_custom",
+                        "target_mbps", "deflicker", "max_quality", "audio", "denoise",
+                        "two_pass", "dual_export"]
+
+
+def load_custom_presets():
+    try:
+        with open(CUSTOM_PRESETS_PATH) as f:
+            data = json.load(f)
+        return data if isinstance(data, list) else []
+    except Exception:
+        return []
+
+
+def save_custom_presets(presets):
+    try:
+        with open(CUSTOM_PRESETS_PATH, "w") as f:
+            json.dump(presets, f, indent=2)
+    except Exception:
+        pass
+
+
 def deband_noise_chain(thr, rng=16, blur=True, dither=2, deflicker=False, max_quality=False,
                        denoise="off"):
     chain = ""
@@ -790,6 +816,8 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, JOB.snapshot())
         elif u.path == "/api/settings":
             self._send(200, load_settings())
+        elif u.path == "/api/presets":
+            self._send(200, load_custom_presets())
         elif u.path in ("/api/scope", "/api/compare-image", "/api/filmstrip-image"):
             q = urllib.parse.parse_qs(u.query)
             token = q.get("token", [""])[0]
@@ -842,6 +870,29 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, item_for(dest))
         elif u.path == "/api/settings":
             self._send(200, save_settings(self._read_json()))
+        elif u.path == "/api/presets/save":
+            data = self._read_json()
+            name = (data.get("name") or "").strip()
+            if not name:
+                self._send(400, {"error": "name required"})
+                return
+            entry = {
+                "name": name,
+                "mode": data.get("mode", "HEVC (smaller, delivery)"),
+                "strength": data.get("strength", "Medium"),
+                "rate": data.get("rate", "Match source"),
+                "settings": {k: data.get("settings", {}).get(k) for k in PRESET_SETTINGS_KEYS
+                            if k in data.get("settings", {})},
+            }
+            presets = [p for p in load_custom_presets() if p.get("name") != name]
+            presets.append(entry)
+            save_custom_presets(presets)
+            self._send(200, {"ok": True, "presets": presets})
+        elif u.path == "/api/presets/delete":
+            name = (self._read_json().get("name") or "").strip()
+            presets = [p for p in load_custom_presets() if p.get("name") != name]
+            save_custom_presets(presets)
+            self._send(200, {"ok": True, "presets": presets})
         elif u.path == "/api/convert":
             data = self._read_json()
             items = [{"path": it["path"], "name": it.get("name", os.path.basename(it["path"])),

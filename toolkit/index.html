@@ -122,6 +122,8 @@
     <button class="ghost" onclick="applyPreset('delivery')" title="HEVC · Match source · Medium deband">Delivery</button>
     <button class="ghost" onclick="applyPreset('grading')" title="ProRes 4444 · High deband · 16-bit">Grading</button>
     <button class="ghost" onclick="applyPreset('preserve')" title="HEVC · Match source · 16-bit · copy audio">Max preservation</button>
+    <span id="customPresets" style="display:contents"></span>
+    <button class="ghost" onclick="saveCustomPreset()">＋ Save current as preset…</button>
   </div>
 
   <div id="bandingBanner" style="display:none"></div>
@@ -329,6 +331,48 @@ async function applyPreset(name){
   await j("/api/settings",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(SETTINGS)});
   updateCustomRate(); updateEstimate();
   setStatus(`Preset applied: ${p.label}.`);
+}
+
+// ---- custom (user-saved) presets ----
+function escAttr(s){ return s.replace(/&/g,"&amp;").replace(/"/g,"&quot;"); }
+async function loadCustomPresets(){
+  const presets=await j("/api/presets");
+  const el=document.getElementById("customPresets");
+  el.innerHTML=presets.map(p=>{
+    const safe=escAttr(p.name), label=p.name.replace(/</g,"&lt;");
+    return `<button class="ghost" data-preset="${safe}">${label}</button>
+    <button class="mini" title="Delete preset ${safe}" data-delpreset="${safe}" style="padding:5px 8px">✕</button>`;
+  }).join("");
+  return presets;
+}
+document.getElementById("customPresets").addEventListener("click",e=>{
+  const ap=e.target.closest("[data-preset]"); if(ap){ applyCustomPreset(ap.dataset.preset); return; }
+  const dp=e.target.closest("[data-delpreset]"); if(dp){ deleteCustomPreset(dp.dataset.delpreset); }
+});
+async function saveCustomPreset(){
+  const name=prompt("Name this preset (e.g. \"My grading setup\"):");
+  if(!name || !name.trim()) return;
+  const cur=await j("/api/settings");
+  await j("/api/presets/save",{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({name:name.trim(),mode,strength,rate,settings:cur})});
+  await loadCustomPresets();
+  setStatus(`Saved preset "${name.trim()}".`);
+}
+async function applyCustomPreset(name){
+  const presets=await j("/api/presets");
+  const p=presets.find(x=>x.name===name); if(!p) return;
+  setSeg("segMode",p.mode); setSeg("segStr",p.strength); setSeg("segRate",p.rate);
+  const cur=await j("/api/settings");
+  SETTINGS={...cur,...p.settings};
+  await j("/api/settings",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(SETTINGS)});
+  updateCustomRate(); updateEstimate();
+  setStatus(`Preset applied: ${name}.`);
+}
+async function deleteCustomPreset(name){
+  if(!confirm(`Delete preset "${name}"?`)) return;
+  await j("/api/presets/delete",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name})});
+  await loadCustomPresets();
+  setStatus(`Deleted preset "${name}".`);
 }
 
 function renderQueue(items){
@@ -694,6 +738,7 @@ Object.keys(ZONES).forEach(id=>{
 function syncZones(){ Object.keys(ZONES).forEach(renderZone); }
 // init
 j("/api/settings").then(s=>{SETTINGS=s; updateEstimate(); updateCustomRate();});
+loadCustomPresets();
 
 renderQueue(queue);
 </script>
