@@ -21,6 +21,7 @@ Endpoints (all on 127.0.0.1):
     GET  /api/scope?token&which-> serve a generated scope PNG
 """
 
+import atexit
 import json
 import os
 import platform
@@ -634,12 +635,34 @@ class Handler(BaseHTTPRequestHandler):
             self._send(404, {"error": "unknown"})
 
 
+def cleanup_temp():
+    """Remove intake uploads + scope/compare frame dirs on exit."""
+    for d in [INTAKE_DIR, *SCOPES.values(), *COMPARE.values()]:
+        shutil.rmtree(d, ignore_errors=True)
+
+
 def main():
     ensure_bundled_ffmpeg()
+    atexit.register(cleanup_temp)
     if not shutil.which("ffmpeg"):
         print("WARNING: ffmpeg not found (bundle missing and none on PATH).")
-    srv = ThreadingHTTPServer((HOST, PORT), Handler)
-    url = f"http://{HOST}:{PORT}/"
+
+    # Bind the first free port from PORT upward (survives a stale/second instance).
+    srv = None
+    port = PORT
+    for p in range(PORT, PORT + 20):
+        try:
+            srv = ThreadingHTTPServer((HOST, p), Handler)
+            port = p
+            break
+        except OSError:
+            continue
+    if srv is None:
+        print(f"Could not find a free port in {PORT}–{PORT + 19}. "
+              f"Is another copy already running? Try that browser tab.")
+        return
+
+    url = f"http://{HOST}:{port}/"
     print(f"8-bit → 10-bit converter running at {url}")
     print("Leave this window open while you use the app. Close it (or Ctrl-C) to quit.")
     try:

@@ -188,6 +188,13 @@
   <div class="set-actions"><button class="ghost" onclick="closeModal('mScopes')">Close</button></div>
 </div></div>
 
+<div class="modal" id="mMsg"><div class="sheet">
+  <h2 id="msgTitle">Details</h2>
+  <pre id="msgBody" style="white-space:pre-wrap;word-break:break-word;background:var(--surface-0,#0000000d);
+    padding:12px;border-radius:8px;max-height:50vh;overflow:auto;font-size:12px"></pre>
+  <div class="set-actions"><button class="ghost" onclick="closeModal('mMsg')">Close</button></div>
+</div></div>
+
 <div class="modal" id="mCompare"><div class="sheet">
   <h2 id="cmpTitle">Compare</h2>
   <div class="cmp" id="cmpWrap">
@@ -240,6 +247,7 @@ function renderQueue(items){
       <span class="name-wrap"><span class="name" title="${it.path||''}">${it.name}</span>
         ${it.info?`<span class="info">${it.info}</span>`:''}</span>
       ${(st==='Done'&&it.out)?`<button class="mini" data-cmp="${i}">Compare</button>`:''}
+      ${(st==='Failed'&&it.error)?`<button class="mini" data-err="${i}">why?</button>`:''}
       <span class="status s-${st}">${st}</span>
       <span class="pct">${it.pct||""}</span>`;
     q.appendChild(r);
@@ -383,7 +391,12 @@ cmpTime.addEventListener("input",()=>{
 
 // ---- drag & drop ----
 const qEl=document.getElementById("queue");
-qEl.addEventListener("click",e=>{ const b=e.target.closest("[data-cmp]"); if(b) openCompare(+b.dataset.cmp); });
+qEl.addEventListener("click",e=>{
+  const c=e.target.closest("[data-cmp]"); if(c){ openCompare(+c.dataset.cmp); return; }
+  const er=e.target.closest("[data-err]"); if(er){ showMsg("Conversion failed — "+(queue[+er.dataset.err]?.name||""), queue[+er.dataset.err]?.error||"(no details)"); }
+});
+function showMsg(title,text){ document.getElementById("msgTitle").textContent=title;
+  document.getElementById("msgBody").textContent=text; document.getElementById("mMsg").classList.add("on"); }
 qEl.addEventListener("dragover",e=>{e.preventDefault();qEl.classList.add("drop");});
 qEl.addEventListener("dragleave",e=>{ if(!qEl.contains(e.relatedTarget)) qEl.classList.remove("drop"); });
 qEl.addEventListener("drop",async e=>{
