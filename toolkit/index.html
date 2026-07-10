@@ -39,7 +39,10 @@
   .row{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px}
   .row:hover{background:var(--chip)}
   .row input[type=checkbox]{width:16px;height:16px}
-  .row .name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .row .name-wrap{flex:1;min-width:0;display:flex;flex-direction:column}
+  .row .name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .row .info{font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:1px}
+  .mini{padding:5px 10px;font-size:12px;border:1px solid var(--line);background:transparent;border-radius:6px}
   .row .status{width:92px;text-align:center;font-weight:600;font-size:13px}
   .row .pct{width:52px;text-align:right;color:var(--muted);font-variant-numeric:tabular-nums}
   .s-Queued{color:var(--muted)} .s-Running{color:var(--run)} .s-Done{color:var(--ok)}
@@ -75,6 +78,14 @@
   .scopes img{width:100%;border-radius:8px;background:#000;display:block;margin-bottom:8px}
   .hint{color:var(--muted);font-size:13px;margin-top:8px;line-height:1.5}
   .row-inline{display:flex;gap:10px;align-items:center}
+  .cmp{position:relative;width:100%;overflow:hidden;border-radius:8px;background:#000;user-select:none;touch-action:none}
+  .cmp-img{display:block;width:100%;pointer-events:none}
+  .cmp-before{position:absolute;top:0;left:0;height:100%;width:50%;overflow:hidden}
+  .cmp-before .cmp-img{max-width:none;height:100%;width:auto}
+  .cmp-handle{position:absolute;top:0;left:50%;width:2px;height:100%;background:#fff;box-shadow:0 0 6px rgba(0,0,0,.7);cursor:ew-resize}
+  .cmp-handle::after{content:'';position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:26px;height:26px;border-radius:50%;background:#fff;box-shadow:0 0 6px rgba(0,0,0,.5)}
+  .cmp-tag{position:absolute;top:8px;padding:3px 8px;border-radius:6px;background:rgba(0,0,0,.6);color:#fff;font-size:12px}
+  .cmp-tagL{left:8px}.cmp-tagR{right:8px}
 </style>
 </head>
 <body>
@@ -147,6 +158,9 @@
     <label>If output exists</label>
     <select id="st_on_exists"><option value="skip">Skip</option>
       <option value="overwrite">Overwrite</option></select>
+    <label>Audio</label>
+    <select id="st_audio"><option value="copy">Copy (no re-encode)</option>
+      <option value="aac">Re-encode to AAC 192k</option></select>
     <h3>Bitrate / quality (HEVC only)</h3>
     <label>Target for Custom (Mbps)</label><input type="number" id="st_target_mbps" min="1" max="200" step="0.5">
     <label>CRF (Quality mode)</label><input type="number" id="st_crf" min="0" max="51">
@@ -172,6 +186,25 @@
   <h2 id="scopesTitle">Scopes</h2>
   <div id="scopesBody" class="hint">Rendering…</div>
   <div class="set-actions"><button class="ghost" onclick="closeModal('mScopes')">Close</button></div>
+</div></div>
+
+<div class="modal" id="mCompare"><div class="sheet">
+  <h2 id="cmpTitle">Compare</h2>
+  <div class="cmp" id="cmpWrap">
+    <img id="cmpAfter" class="cmp-img" alt="after">
+    <div class="cmp-before" id="cmpBeforeWrap"><img id="cmpBefore" class="cmp-img" alt="before"></div>
+    <div class="cmp-handle" id="cmpHandle"></div>
+    <span class="cmp-tag cmp-tagL">Before · source</span>
+    <span class="cmp-tag cmp-tagR">After · 10-bit</span>
+  </div>
+  <div class="row-inline" style="margin-top:12px">
+    <span style="color:var(--muted)">Time</span>
+    <input type="range" id="cmpTime" min="0" max="100" value="40" style="flex:1">
+    <span id="cmpTimeLbl" style="color:var(--muted);width:56px;text-align:right">—</span>
+  </div>
+  <div class="hint">Drag the divider to wipe between source and converted (same frame). Look at
+    smooth areas — skies, smoke, gradients — for banding.</div>
+  <div class="set-actions"><button class="ghost" onclick="closeModal('mCompare')">Close</button></div>
 </div></div>
 
 <script>
@@ -204,7 +237,9 @@ function renderQueue(items){
     const r=document.createElement("div"); r.className="row";
     const st=it.status||"Queued";
     r.innerHTML=`<input type="checkbox" data-i="${i}" ${running?'disabled':''}>
-      <span class="name" title="${it.path||''}">${it.name}</span>
+      <span class="name-wrap"><span class="name" title="${it.path||''}">${it.name}</span>
+        ${it.info?`<span class="info">${it.info}</span>`:''}</span>
+      ${(st==='Done'&&it.out)?`<button class="mini" data-cmp="${i}">Compare</button>`:''}
       <span class="status s-${st}">${st}</span>
       <span class="pct">${it.pct||""}</span>`;
     q.appendChild(r);
@@ -262,7 +297,7 @@ async function openSettings(){
   if(!P.options.length){["ultrafast","superfast","veryfast","faster","fast","medium","slow","slower","veryslow"]
     .forEach(v=>P.add(new Option(v,v)));}
   st_dest_mode.value=s.dest_mode; st_dest_dir.value=s.dest_dir; st_suffix.value=s.suffix;
-  st_on_exists.value=s.on_exists; st_crf.value=s.crf; st_preset.value=s.preset;
+  st_on_exists.value=s.on_exists; st_audio.value=s.audio||"copy"; st_crf.value=s.crf; st_preset.value=s.preset;
   st_deband_range.value=s.deband_range; st_deband_blur.value=String(s.deband_blur);
   st_dither.value=s.dither; st_thr_custom.value=s.thr_custom;
   st_target_mbps.value=s.target_mbps; st_deflicker.value=String(s.deflicker);
@@ -276,7 +311,7 @@ async function pickDest(){
 }
 async function saveSettings(){
   const body={dest_mode:st_dest_mode.value,dest_dir:st_dest_dir.value.trim(),
-    suffix:st_suffix.value.trim()||"_10bit",on_exists:st_on_exists.value,
+    suffix:st_suffix.value.trim()||"_10bit",on_exists:st_on_exists.value,audio:st_audio.value,
     crf:+st_crf.value,preset:st_preset.value,deband_range:+st_deband_range.value,
     deband_blur:st_deband_blur.value==="true",dither:+st_dither.value,
     thr_custom:st_thr_custom.value.trim()||"0.03",
@@ -310,8 +345,45 @@ async function openScopes(){
       gaps fill in and gradients read smooth. Adjust Deband strength and re-open to compare.</div>`;
 }
 
+// ---- A/B compare ----
+let cmpSrc, cmpOut, cmpDur=0, cmpTimer=null;
+function fmtT(s){s=Math.max(0,Math.round(s));return `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;}
+function setSplit(pct){pct=Math.max(3,Math.min(97,pct));cmpBeforeWrap.style.width=pct+"%";cmpHandle.style.left=pct+"%";}
+async function cmpRender(t){
+  const r=await j("/api/compare",{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({src:cmpSrc,out:cmpOut,t})});
+  if(r.error){ document.getElementById("cmpTitle").textContent="Compare — "+r.error; return; }
+  cmpDur=r.duration||0;
+  const bust=Date.now();
+  cmpAfter.src=`/api/compare-image?token=${r.token}&which=after&_=${bust}`;
+  cmpBefore.src=`/api/compare-image?token=${r.token}&which=before&_=${bust}`;
+  cmpTimeLbl.textContent=cmpDur?`${fmtT(r.t)} / ${fmtT(cmpDur)}`:fmtT(r.t);
+}
+function openCompare(i){
+  const it=queue[i]; if(!it||!it.out) return;
+  cmpSrc=it.path; cmpOut=it.out;
+  document.getElementById("cmpTitle").textContent="Compare — "+it.name;
+  document.getElementById("mCompare").classList.add("on");
+  setSplit(50); cmpTime.value=40; cmpRender(null);
+}
+cmpTime.addEventListener("input",()=>{
+  if(!cmpDur) return;
+  clearTimeout(cmpTimer);
+  const t=cmpTime.value/100*cmpDur;
+  cmpTimeLbl.textContent=`${fmtT(t)} / ${fmtT(cmpDur)}`;
+  cmpTimer=setTimeout(()=>cmpRender(t),180);
+});
+(function(){ // divider drag
+  let drag=false;
+  const move=e=>{const r=cmpWrap.getBoundingClientRect();setSplit((e.clientX-r.left)/r.width*100);};
+  cmpWrap.addEventListener("pointerdown",e=>{drag=true;move(e);});
+  window.addEventListener("pointermove",e=>{if(drag)move(e);});
+  window.addEventListener("pointerup",()=>drag=false);
+})();
+
 // ---- drag & drop ----
 const qEl=document.getElementById("queue");
+qEl.addEventListener("click",e=>{ const b=e.target.closest("[data-cmp]"); if(b) openCompare(+b.dataset.cmp); });
 qEl.addEventListener("dragover",e=>{e.preventDefault();qEl.classList.add("drop");});
 qEl.addEventListener("dragleave",e=>{ if(!qEl.contains(e.relatedTarget)) qEl.classList.remove("drop"); });
 qEl.addEventListener("drop",async e=>{

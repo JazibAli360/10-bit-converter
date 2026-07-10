@@ -47,7 +47,10 @@ DEFAULT_SETTINGS = {
     "target_mbps": 12.0,       # used when Bitrate = Custom
     "deflicker": False,        # ffmpeg deflicker filter (luminance flicker)
     "max_quality": False,      # process deband/dither at 16-bit for cleaner gradients
+    "audio": "copy",           # "copy" (lossless, no re-encode) or "aac"
 }
+
+MP4_COPY_AUDIO = {"aac", "mp3", "ac3", "eac3"}   # codecs safe to stream-copy into .mp4
 
 
 # ------------------------------------------------------------------ ffmpeg setup
@@ -136,6 +139,82 @@ def probe_pix_fmt(path):
                               capture_output=True, text=True, check=True).stdout.strip()
     except Exception:
         return ""
+
+
+def probe_audio_codec(path):
+    try:
+        return subprocess.run(["ffprobe", "-v", "error", "-select_streams", "a:0",
+                               "-show_entries", "stream=codec_name", "-of", "csv=p=0", path],
+                              capture_output=True, text=True, check=True).stdout.strip()
+    except Exception:
+        return ""
+
+
+def audio_args(in_path, is_prores, audio_mode):
+    """No needless re-encode: copy the audio stream when safe, else transcode."""
+    codec = probe_audio_codec(in_path)
+    if not codec:
+        return ["-an"]                      # source has no audio
+    if audio_mode == "aac" and not is_prores:
+        return ["-c:a", "aac", "-b:a", "192k"]
+    if is_prores:
+        return ["-c:a", "copy"]             # .mov accepts most codecs
+    if codec in MP4_COPY_AUDIO:             # .mp4 copy only when compatible
+        return ["-c:a", "copy"]
+    return ["-c:a", "aac", "-b:a", "192k"]  # e.g. PCM in a MOV -> can't copy to mp4
+
+
+def color_args(in_path):
+    """Carry the source's colour tags (primaries/transfer/matrix/range) into the
+    output so editors interpret it correctly instead of guessing."""
+    try:
+        out = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0",
+                              "-show_entries",
+                              "stream=color_primaries,color_transfer,color_space,color_range",
+                              "-of", "default=noprint_wrappers=1:nokey=0", in_path],
+                             capture_output=True, text=True, check=True).stdout
+    except Exception:
+        return []
+    d = {}
+    for line in out.splitlines():
+        if "=" in line:
+            k, v = line.split("=", 1)
+            d[k.strip()] = v.strip()
+    bad = ("", "unknown", "N/A", "reserved")
+    args = []
+    if d.get("color_primaries") not in bad:
+        args += ["-color_primaries", d["color_primaries"]]
+    if d.get("color_transfer") not in bad:
+        args += ["-color_trc", d["color_transfer"]]
+    if d.get("color_space") not in bad:
+        args += ["-colorspace", d["color_space"]]
+    if d.get("color_range") in ("tv", "pc", "limited", "full"):
+        args += ["-color_range", d["color_range"]]
+    return args
+
+
+def pixfmt_bits(pf):
+    for b in ("16", "12", "10"):
+        if b in pf:
+            return int(b)
+    return 8
+
+
+def human_size(n):
+    for u in ("B", "KB", "MB", "GB"):
+        if n < 1024:
+            return f"{n:.0f} {u}" if u == "B" else f"{n:.1f} {u}"
+        n /= 1024
+    return f"{n:.1f} TB"
+
+
+def verify_output(path):
+    pf = probe_pix_fmt(path)
+    bits = pixfmt_bits(pf)
+    kbps = probe_bitrate_kbps(path)
+    size = os.path.getsize(path) if os.path.exists(path) else 0
+    check = "✓" if bits >= 10 else "⚠"
+    return f"{check} {bits}-bit ({pf}) · {kbps / 1000:.1f} Mbps · {human_size(size)}"
 
 
 def make_output_path(in_path, is_prores, dest_dir, suffix):
@@ -261,17 +340,20 @@ def run_batch(items, mode, strength, rate, settings):
             skipped += 1
             _set_item(idx - 1, status="Skipped", pct="—")
             continue
+        aud = audio_args(in_path, is_prores, settings.get("audio", "copy"))
+        col = color_args(in_path)
         if is_prores:
             cmd = ["ffmpeg", "-y", "-nostats", "-i", in_path, "-vf", filters,
                    "-c:v", "prores_ks", "-profile:v", "4444", "-pix_fmt", "yuv444p10le",
-                   "-c:a", "pcm_s16le", "-progress", "pipe:1", out_path]
+                   *(["-c:a", "pcm_s16le"] if aud == ["-an"] else aud), *col,
+                   "-progress", "pipe:1", out_path]
         else:
             cmd = ["ffmpeg", "-y", "-nostats", "-i", in_path, "-vf", filters,
                    "-c:v", "libx265", "-pix_fmt", "yuv420p10le",
                    *hevc_rate_args(rate, settings, in_path),
-                   "-preset", str(settings["preset"]),
-                   "-tag:v", "hvc1", "-c:a", "aac", "-b:a", "192k",
-                   "-progress", "pipe:1", out_path]
+                   "-preset", str(settings["preset"]), "-tag:v", "hvc1",
+                   *aud, *col, "-progress", "pipe:1", out_path]
+        src_bits = pixfmt_bits(probe_pix_fmt(in_path))
         dur = probe_duration(in_path)
         _set_item(idx - 1, status="Running", pct="0%")
         with JOB.lock:
@@ -292,7 +374,10 @@ def run_batch(items, mode, strength, rate, settings):
             continue
         done += 1
         last_output = out_path
-        _set_item(idx - 1, status="Done", pct="100%")
+        info = verify_output(out_path)
+        if src_bits >= 10:
+            info = f"source was {src_bits}-bit (deband only) · " + info
+        _set_item(idx - 1, status="Done", pct="100%", info=info, out=out_path)
 
     cancelled = JOB.cancel.is_set()
     parts = [f"{done} done"]
@@ -397,6 +482,20 @@ def render_scopes(in_path, strength, settings):
     return token
 
 
+COMPARE = {}   # token -> dir
+
+
+def render_compare(src, out, t):
+    d = tempfile.mkdtemp(prefix="cmp_")
+    for which, path in (("before", src), ("after", out)):
+        subprocess.run(["ffmpeg", "-y", "-v", "error", "-ss", f"{t}", "-i", path,
+                        "-frames:v", "1", "-vf", "scale=1000:-2",
+                        os.path.join(d, which + ".png")], capture_output=True)
+    token = os.path.basename(d)
+    COMPARE[token] = d
+    return token
+
+
 # ------------------------------------------------------------------ HTTP handler
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, *a):
@@ -434,12 +533,13 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, JOB.snapshot())
         elif u.path == "/api/settings":
             self._send(200, load_settings())
-        elif u.path == "/api/scope":
+        elif u.path in ("/api/scope", "/api/compare-image"):
             q = urllib.parse.parse_qs(u.query)
             token = q.get("token", [""])[0]
             which = q.get("which", [""])[0]
-            d = SCOPES.get(token)
-            fp = os.path.join(d, which + ".png") if d else None
+            store = SCOPES if u.path == "/api/scope" else COMPARE
+            d = store.get(token)
+            fp = os.path.join(d, os.path.basename(which) + ".png") if d else None
             if fp and os.path.isfile(fp):
                 with open(fp, "rb") as f:
                     self._send(200, f.read(), "image/png")
@@ -515,6 +615,21 @@ class Handler(BaseHTTPRequestHandler):
                 return
             token = render_scopes(path, data.get("strength", "Medium"), load_settings())
             self._send(200, {"token": token, "name": os.path.basename(path)})
+        elif u.path == "/api/compare":
+            data = self._read_json()
+            src, out = data.get("src"), data.get("out")
+            if not (src and out and os.path.isfile(src) and os.path.isfile(out)):
+                self._send(400, {"error": "files not found"})
+                return
+            dur = probe_duration(src)
+            t = data.get("t")
+            if t is None:
+                t = round(dur * 0.4, 2) if dur else 1.0
+            t = float(t)
+            if dur:
+                t = max(0.0, min(t, max(0.0, dur - 0.05)))
+            token = render_compare(src, out, t)
+            self._send(200, {"token": token, "duration": dur, "t": t})
         else:
             self._send(404, {"error": "unknown"})
 

@@ -80,7 +80,10 @@ stdlib only. `Start_Here.command` starts it and opens your browser to
 **Format** (HEVC / ProRes 4444), **Deband** (Low/Medium/High/Custom), and
 **Bitrate** (Match source / Quality / Custom Mbps) controls, optional
 **Deflicker** and **Max quality (16-bit)** passes (Settings), a **live "Now
-running"** readout (%, frame, fps, speed, ETA), a
+running"** readout (%, frame, fps, speed, ETA), **audio stream-copy** by default
+(no needless re-encode) with source **colour-tag passthrough**, an **auto 10-bit
+verify** shown on each finished row (confirmed pix_fmt · bitrate · size), an
+**A/B before–after compare** (drag-to-wipe on the same frame), a
 **Cancel** button (stops instantly, partial output discarded), a **Settings**
 dialog (output folder, suffix, skip/overwrite, CRF, preset, deband range/blur,
 dither, custom threshold — persisted), and **Preview scopes** (source vs
