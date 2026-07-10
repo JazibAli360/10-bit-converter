@@ -48,6 +48,8 @@ prompt level, not with a bit-depth conversion.
   print live percentage, both parsed from ffmpeg (no more fake spinner).
 - **Deband strength control** — Low / Medium / High, so you can match the
   amount of debanding to how bad the banding actually is.
+- **Cancel button (GUI)** — stop a running conversion/batch instantly; the
+  in-progress output file is cleaned up so nothing broken is left behind.
 
 ## Files in this toolkit
 
@@ -58,7 +60,9 @@ above.
 ### `10bit_converter_gui.py`
 The GUI. A queue you can fill with **multiple files or a whole folder**, a
 format dropdown (HEVC vs ProRes 4444), a **deband-strength dropdown**
-(Low/Medium/High), and a **real percentage progress bar**. Run directly with:
+(Low/Medium/High), a **real percentage progress bar**, and a **Cancel button**
+that stops a running batch immediately (the partial output is discarded). Run
+directly with:
 ```bash
 python3 10bit_converter_gui.py
 ```

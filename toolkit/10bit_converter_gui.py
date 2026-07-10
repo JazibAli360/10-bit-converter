@@ -113,11 +113,17 @@ class ConverterApp:
         ttk.Combobox(opt, textvariable=self.strength, state="readonly", width=32,
                      values=list(STRENGTH_THR.keys())).grid(row=1, column=1, pady=3)
 
-        # --- Convert button ---
-        self.convert_btn = tk.Button(root, text="Convert", font=("Helvetica", 13, "bold"),
+        # --- Convert / Cancel buttons ---
+        action = tk.Frame(root)
+        action.pack(pady=12)
+        self.convert_btn = tk.Button(action, text="Convert", font=("Helvetica", 13, "bold"),
                                      bg="#2d7dd2", fg="white", command=self.start_convert,
-                                     state="disabled", width=20)
-        self.convert_btn.pack(pady=12)
+                                     state="disabled", width=16)
+        self.convert_btn.pack(side="left", padx=4)
+        self.cancel_btn = tk.Button(action, text="Cancel", font=("Helvetica", 13, "bold"),
+                                    bg="#d9534f", fg="white", command=self.cancel_convert,
+                                    state="disabled", width=10)
+        self.cancel_btn.pack(side="left", padx=4)
 
         # --- Progress (determinate, real %) ---
         self.progress = ttk.Progressbar(root, mode="determinate", length=500, maximum=100)
@@ -190,9 +196,17 @@ class ConverterApp:
         self._set_controls(False)
         threading.Thread(target=self.run_batch, daemon=True).start()
 
+    def cancel_convert(self):
+        # Signal the worker thread; it terminates the running ffmpeg and stops the batch.
+        self._cancel.set()
+        self.cancel_btn.config(state="disabled")
+        self.status.set("Cancelling…")
+
     def _set_controls(self, enabled: bool):
-        state = "normal" if enabled else "disabled"
-        self.convert_btn.config(state=state)
+        # enabled=True  -> idle: Convert usable (if queue), Cancel off
+        # enabled=False -> converting: Convert off, Cancel on
+        self.convert_btn.config(state="normal" if (enabled and self.queue) else "disabled")
+        self.cancel_btn.config(state="disabled" if enabled else "normal")
 
     def run_batch(self):
         total = len(self.queue)
@@ -225,7 +239,14 @@ class ConverterApp:
 
             err_tail = self._run_ffmpeg(cmd, dur)
             if self._cancel.is_set():
+                # Remove the half-written output so no broken file is left behind.
+                try:
+                    if os.path.exists(out_path):
+                        os.remove(out_path)
+                except OSError:
+                    pass
                 self._ui(lambda: self.status.set("Cancelled."))
+                self._ui(lambda: self.progress.config(value=0))
                 self._ui(lambda: self._set_controls(True))
                 return
             if err_tail is not None:
@@ -246,9 +267,24 @@ class ConverterApp:
         or the tail of stderr on failure."""
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                  text=True, bufsize=1)
+
+        # Watcher: ffmpeg block-buffers stdout, so checking the cancel flag only
+        # between progress lines can lag many seconds. This thread stops ffmpeg
+        # promptly (within ~0.2s) when Cancel is pressed, regardless of output timing.
+        # We use kill() (SIGKILL) not terminate() (SIGTERM): under SIGTERM, libx265
+        # finishes the current encode before exiting (10s+ lag); the partial output
+        # is discarded on cancel anyway, so a hard kill is both correct and instant.
+        def _watch():
+            while proc.poll() is None:
+                if self._cancel.wait(0.2):
+                    proc.kill()
+                    return
+        watcher = threading.Thread(target=_watch, daemon=True)
+        watcher.start()
+
         for line in proc.stdout:
             if self._cancel.is_set():
-                proc.terminate()
+                proc.kill()
                 break
             line = line.strip()
             if line.startswith(("out_time_us=", "out_time_ms=")):
