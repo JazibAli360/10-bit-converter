@@ -46,6 +46,7 @@ DEFAULT_SETTINGS = {
     "dither": 2, "thr_custom": "0.03",
     "target_mbps": 12.0,       # used when Bitrate = Custom
     "deflicker": False,        # ffmpeg deflicker filter (luminance flicker)
+    "max_quality": False,      # process deband/dither at 16-bit for cleaner gradients
 }
 
 
@@ -80,14 +81,21 @@ def save_settings(s):
     return clean
 
 
-def deband_noise_chain(thr, rng=16, blur=True, dither=2, deflicker=False):
-    chain = ("deflicker," if deflicker else "")
+def deband_noise_chain(thr, rng=16, blur=True, dither=2, deflicker=False, max_quality=False):
+    chain = ""
+    if deflicker:
+        chain += "deflicker,"
+    if max_quality:
+        # Work at 16-bit 4:4:4 so debanding + dithering compute with headroom,
+        # then the final format step quantizes to 10-bit. Pure precision — it
+        # does not add, remove, or reinterpret any detail/texture.
+        chain += "format=yuv444p16le,"
     return (chain + f"deband=1thr={thr}:2thr={thr}:3thr={thr}:range={rng}:blur={1 if blur else 0},"
             f"noise=alls={dither}:allf=t+u")
 
 
-def build_filters(thr, pix_fmt, rng=16, blur=True, dither=2, deflicker=False):
-    return deband_noise_chain(thr, rng, blur, dither, deflicker) + f",format={pix_fmt}"
+def build_filters(thr, pix_fmt, rng=16, blur=True, dither=2, deflicker=False, max_quality=False):
+    return deband_noise_chain(thr, rng, blur, dither, deflicker, max_quality) + f",format={pix_fmt}"
 
 
 def probe_duration(path):
@@ -233,7 +241,8 @@ def run_batch(items, mode, strength, rate, settings):
     pix_fmt = "yuv444p10le" if is_prores else "yuv420p10le"
     filters = build_filters(thr, pix_fmt, settings["deband_range"],
                             settings["deband_blur"], settings["dither"],
-                            settings.get("deflicker", False))
+                            settings.get("deflicker", False),
+                            settings.get("max_quality", False))
     total = len(items)
     done = failed = skipped = 0
     last_output = None
@@ -367,8 +376,9 @@ SCOPES = {}   # token -> dir
 
 def render_scopes(in_path, strength, settings):
     thr = STRENGTH_THR.get(strength) or str(settings.get("thr_custom", "0.03"))
-    chain = deband_noise_chain(thr, settings["deband_range"],
-                               settings["deband_blur"], settings["dither"])
+    chain = deband_noise_chain(thr, settings["deband_range"], settings["deband_blur"],
+                               settings["dither"], settings.get("deflicker", False),
+                               settings.get("max_quality", False))
     outdir = tempfile.mkdtemp(prefix="scopes_")
     dur = probe_duration(in_path)
     t = max(0.0, dur * 0.4) if dur else 1.0

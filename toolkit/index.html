@@ -159,6 +159,8 @@
     <label>Custom threshold</label><input type="text" id="st_thr_custom">
     <label>Deflicker</label>
     <select id="st_deflicker"><option value="false">Off</option><option value="true">On (luminance flicker)</option></select>
+    <label>Max quality (16-bit)</label>
+    <select id="st_max_quality"><option value="false">Off (faster)</option><option value="true">On (cleaner gradients, slower)</option></select>
   </div>
   <div class="set-actions">
     <button class="ghost" onclick="closeModal('mSettings')">Cancel</button>
@@ -264,6 +266,7 @@ async function openSettings(){
   st_deband_range.value=s.deband_range; st_deband_blur.value=String(s.deband_blur);
   st_dither.value=s.dither; st_thr_custom.value=s.thr_custom;
   st_target_mbps.value=s.target_mbps; st_deflicker.value=String(s.deflicker);
+  st_max_quality.value=String(s.max_quality);
   document.getElementById("mSettings").classList.add("on");
 }
 async function pickDest(){
@@ -277,7 +280,8 @@ async function saveSettings(){
     crf:+st_crf.value,preset:st_preset.value,deband_range:+st_deband_range.value,
     deband_blur:st_deband_blur.value==="true",dither:+st_dither.value,
     thr_custom:st_thr_custom.value.trim()||"0.03",
-    target_mbps:+st_target_mbps.value||12,deflicker:st_deflicker.value==="true"};
+    target_mbps:+st_target_mbps.value||12,deflicker:st_deflicker.value==="true",
+    max_quality:st_max_quality.value==="true"};
   if(body.dest_mode==="custom" && !body.dest_dir){ alert("Choose an output folder, or switch back to “Next to each source”."); return; }
   await j("/api/settings",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
   closeModal("mSettings"); setStatus("Settings saved.");

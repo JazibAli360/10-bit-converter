@@ -78,8 +78,9 @@ The converter runs as a small **local web app** — no GUI toolkit, Python
 stdlib only. `Start_Here.command` starts it and opens your browser to
 `http://127.0.0.1:8766`. It has a **queue** (each row shows status + live %),
 **Format** (HEVC / ProRes 4444), **Deband** (Low/Medium/High/Custom), and
-**Bitrate** (Match source / Quality / Custom Mbps) controls, an optional
-**Deflicker** pass (Settings), a **live "Now running"** readout (%, frame, fps, speed, ETA), a
+**Bitrate** (Match source / Quality / Custom Mbps) controls, optional
+**Deflicker** and **Max quality (16-bit)** passes (Settings), a **live "Now
+running"** readout (%, frame, fps, speed, ETA), a
 **Cancel** button (stops instantly, partial output discarded), a **Settings**
 dialog (output folder, suffix, skip/overwrite, CRF, preset, deband range/blur,
 dither, custom threshold — persisted), and **Preview scopes** (source vs
