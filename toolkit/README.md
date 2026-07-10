@@ -1,5 +1,20 @@
 # 8-bit → 10-bit Video Conversion Toolkit
 
+## Quick start (easiest — just one file)
+
+**Double-click `Start_Here.command`.**
+
+It checks what your Mac has, offers to install anything missing (Homebrew,
+ffmpeg, Python + Tk, optional drag-and-drop), and then opens the converter
+app. You just confirm the prompts.
+
+> First run only: macOS blocks unsigned scripts, so if double-click does
+> nothing, **right-click `Start_Here.command` → Open → Open**. You do this
+> once, then double-click works normally.
+
+That's all most people need. The rest of this README is for the individual
+tools and for command-line use.
+
 ## What this actually does (read this first)
 
 Converting 8-bit AI-generated footage to 10-bit does **not** recover color
@@ -22,45 +37,85 @@ improve texture. If footage looks flat rather than banded, that's a
 generation-quality issue (prompting, lighting, contrast) — fix it at the
 prompt level, not with a bit-depth conversion.
 
+## What's new in this version
+
+- **One-click setup + launch** — `Start_Here.command` installs dependencies
+  and opens the app for you.
+- **Batch / folder processing** — point any tool at a folder (or drop/select
+  multiple files) and it converts them all, writing `NAME_10bit.EXT` next to
+  each source.
+- **Real progress %** — the GUI shows a true percentage bar and the scripts
+  print live percentage, both parsed from ffmpeg (no more fake spinner).
+- **Deband strength control** — Low / Medium / High, so you can match the
+  amount of debanding to how bad the banding actually is.
+
 ## Files in this toolkit
 
-### `8bit_to_10bit.sh`
-Command-line ffmpeg script. Run from Terminal:
-```bash
-./8bit_to_10bit.sh input.mp4                      # HEVC 10-bit (default)
-./8bit_to_10bit.sh input.mp4 output.mov prores     # ProRes 4444 10-bit
-```
-
-### `8bit_to_10bit.command`
-Same logic, but double-click/drag-and-drop friendly on Mac. Drop a video
-file onto its icon in Finder to convert it. First run: right-click → Open
-(macOS blocks unsigned scripts by default).
+### `Start_Here.command`  ← start here
+Double-click to install everything needed and launch the GUI. See Quick start
+above.
 
 ### `10bit_converter_gui.py`
-A GUI version with buttons, a format dropdown (HEVC vs ProRes 4444), and a
-progress bar. Run with:
+The GUI. A queue you can fill with **multiple files or a whole folder**, a
+format dropdown (HEVC vs ProRes 4444), a **deband-strength dropdown**
+(Low/Medium/High), and a **real percentage progress bar**. Run directly with:
 ```bash
 python3 10bit_converter_gui.py
 ```
+(Normally you don't need this — `Start_Here.command` launches it for you.)
 
-## One-time setup (all tools need this)
+### `8bit_to_10bit.command`
+Mac double-click / drag-and-drop tool. Drop **one or more files, or a folder**
+onto its icon in Finder. On launch it asks you for the output format and
+deband strength, shows live progress in the Terminal window, then reveals the
+results in Finder. First run: right-click → Open (macOS blocks unsigned
+scripts by default).
+
+### `8bit_to_10bit.sh`
+Command-line ffmpeg script with flags. Run from Terminal:
+```bash
+./8bit_to_10bit.sh input.mp4                          # HEVC 10-bit, medium deband
+./8bit_to_10bit.sh -m prores -s high input.mp4 out.mov # ProRes 4444, strong deband
+./8bit_to_10bit.sh --mode prores ./my_clips_folder     # batch a whole folder
+```
+Options:
+- `-m, --mode  hevc|prores` — output codec (default `hevc`).
+- `-s, --strength  low|med|high` — deband strength (default `med`).
+- `-h, --help` — full usage.
+
+## One-time setup (if you're not using Start_Here)
 
 ```bash
 brew install ffmpeg python-tk
 ```
-
-Optional, for real drag-and-drop in the GUI version:
+Optional, for real drag-and-drop in the GUI:
 ```bash
 pip3 install tkinterdnd2
 ```
 
-## Tuning
+## Deband strength — what the levels mean
 
-All three tools use the same filter chain:
-```
-deband=1thr=0.02:2thr=0.02:3thr=0.02:range=16:blur=1,noise=alls=2:allf=t+u,format=yuv420p10le
-```
+All tools build the same filter chain; only the threshold changes with the
+strength you pick:
 
-If a scene has heavy banding (smooth skies, gradient backgrounds), bump the
-`1thr`/`2thr`/`3thr` values up to `0.04–0.06` for a stronger deband effect.
-Too high starts to soften real detail, so nudge gradually and eyeball it.
+| Strength | Threshold (1/2/3thr) | Use it when… |
+|----------|----------------------|--------------|
+| Low      | 0.01                 | Mild banding; you want to preserve maximum fine detail. |
+| Medium   | 0.02 (default)       | Typical AI footage with some sky/gradient banding. |
+| High     | 0.05                 | Heavy banding in smooth skies / gradient backgrounds. Softens real detail slightly, so don't overshoot. |
+
+The underlying chain is:
+```
+deband=1thr=<T>:2thr=<T>:3thr=<T>:range=16:blur=1,noise=alls=2:allf=t+u,format=yuv420p10le
+```
+For manual tuning you can edit the threshold directly; nudge gradually and
+eyeball it, since too high starts to soften real detail.
+
+## Verifying the output is really 10-bit
+
+```bash
+ffprobe -v error -select_streams v:0 -show_entries stream=pix_fmt -of csv=p=0 output.mp4
+```
+Expect `yuv420p10le` for HEVC. For ProRes 4444 you'll see `yuv444p12le` —
+that's expected: ProRes 4444 is a 12-bit format, so it comfortably exceeds
+the 10-bit target.
