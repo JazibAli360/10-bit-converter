@@ -3,12 +3,16 @@
 Planning doc for the 8-bit → 10-bit toolkit. Internal (not shipped in the
 release zip).
 
-**Status:** Phase 1–3 shipped as of **v16** (only 1.4 `.app` launcher deferred).
+**Status:** Phase 1–3 shipped as of v16; scopes/compare overhaul + all
+"additional candidates" shipped v18–v29 (only 1.4 `.app` launcher deferred).
 Build a release with `./build_release.sh` → `dist/10bit_converter_<ver>.zip`.
 Done: resilient server, temp cleanup, surfaced errors, batch progress, reveal,
-presets, in-app help + credit, live sliders, size estimates, bitrate zones,
-denoise, two-pass. Remaining: `.app` launcher (needs Apple Dev acct for
-frictionless), the "additional candidates", and Phase 4 (Windows/Linux).
+presets (built-in + custom/saved), in-app help + credit, live sliders, size
+estimates, bitrate zones, denoise, two-pass, waveform/zoom/frame-picker/diff
+scopes, banding meter, dual export, watch folder, completion notification,
+batch report, per-file source info, drag-to-reorder, stop-after-current,
+confirm-before-overwrite. Remaining: `.app` launcher (needs Apple Dev acct for
+frictionless) and Phase 4 (Windows/Linux).
 
 ## Guiding principles
 - **No AI, no reinterpretation.** Nothing that invents, removes, or reinterprets
@@ -83,17 +87,20 @@ frictionless), the "additional candidates", and Phase 4 (Windows/Linux).
 
 ---
 
-## Additional candidates (proposed — to confirm)
-- Per-file **source info** (resolution · codec · bit depth · duration · bitrate) in
-  the row or on hover, so you see what you're feeding in.
+## Additional candidates
+
+Shipped (v18–v29): scopes/compare upgrade (waveform, frame picker, zoom, diff
+view — v19), banding meter (v20), dual export ProRes+HEVC (v21), custom saved
+presets (v22), watch folder (v23), completion notification (v24), batch
+summary report + convert log (v25), per-file source info on hover (v26),
+drag-to-reorder queue (v27), stop-after-current (v28), confirm-before-
+overwrite (v29).
+
+Still open / not done:
 - **Output filename preview** before converting.
 - **Persist last-used** Format / Deband / Bitrate selections across launches
   (settings persist today; the top-level picks reset).
-- **"Stop after current file"** (graceful finish) vs the existing **"Cancel now."**
-- **Confirm before overwrite** when overwrite mode is on.
-- **Convert/error log** written to disk for troubleshooting.
 - **Version number** shown in the app.
-- **Drag-to-reorder** the queue.
 
 ## Out of scope (won't do)
 - AI debanding / deflicker (reinterprets detail).
