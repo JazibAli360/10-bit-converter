@@ -218,6 +218,40 @@ def verify_output(path):
     return f"{check} {bits}-bit ({pf}) · {kbps / 1000:.1f} Mbps · {human_size(size)}"
 
 
+def probe_info(path):
+    """One-shot probe: duration, bitrate (kbps), resolution, fps, pix_fmt."""
+    try:
+        out = subprocess.run(
+            ["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries",
+             "stream=width,height,pix_fmt,avg_frame_rate:format=duration,bit_rate",
+             "-of", "json", path], capture_output=True, text=True, check=True).stdout
+        d = json.loads(out)
+        st = (d.get("streams") or [{}])[0]
+        fmt = d.get("format", {})
+        dur = float(fmt.get("duration") or 0)
+        br = fmt.get("bit_rate")
+        if br and br.isdigit() and int(br) > 0:
+            kbps = int(br) // 1000
+        elif dur > 0:
+            kbps = int(os.path.getsize(path) * 8 / dur / 1000)
+        else:
+            kbps = 0
+        fps = 0.0
+        r = st.get("avg_frame_rate", "0/0")
+        if "/" in r:
+            n, dn = r.split("/")
+            fps = (float(n) / float(dn)) if float(dn or 0) else 0.0
+        return {"dur": round(dur, 2), "kbps": kbps, "width": st.get("width", 0),
+                "height": st.get("height", 0), "fps": round(fps, 2),
+                "pix_fmt": st.get("pix_fmt", "")}
+    except Exception:
+        return {"dur": 0, "kbps": 0, "width": 0, "height": 0, "fps": 0, "pix_fmt": ""}
+
+
+def item_for(path):
+    return {"path": path, "name": os.path.basename(path), **probe_info(path)}
+
+
 def make_output_path(in_path, is_prores, dest_dir, suffix):
     base = os.path.splitext(os.path.basename(in_path))[0]
     ext = "mov" if is_prores else "mp4"
@@ -570,11 +604,10 @@ class Handler(BaseHTTPRequestHandler):
         u = urllib.parse.urlparse(self.path)
         if u.path == "/api/pick-files":
             paths = pick_files()
-            self._send(200, [{"path": p, "name": os.path.basename(p)}
-                             for p in paths if p.lower().endswith(VIDEO_EXTS)])
+            self._send(200, [item_for(p) for p in paths if p.lower().endswith(VIDEO_EXTS)])
         elif u.path == "/api/pick-folder":
             paths = pick_folder()
-            self._send(200, [{"path": p, "name": os.path.basename(p)} for p in paths])
+            self._send(200, [item_for(p) for p in paths])
         elif u.path == "/api/upload":
             q = urllib.parse.parse_qs(u.query)
             name = os.path.basename(q.get("name", ["dropped"])[0]) or "dropped"
@@ -600,7 +633,7 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as e:
                 self._send(500, {"error": str(e)})
                 return
-            self._send(200, {"path": dest, "name": os.path.basename(dest)})
+            self._send(200, item_for(dest))
         elif u.path == "/api/settings":
             self._send(200, save_settings(self._read_json()))
         elif u.path == "/api/convert":

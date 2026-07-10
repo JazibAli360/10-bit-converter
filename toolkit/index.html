@@ -78,6 +78,8 @@
   .scopes img{width:100%;border-radius:8px;background:#000;display:block;margin-bottom:8px}
   .hint{color:var(--muted);font-size:13px;margin-top:8px;line-height:1.5}
   .row-inline{display:flex;gap:10px;align-items:center}
+  .slv{width:64px;text-align:right;color:var(--ink);font-variant-numeric:tabular-nums}
+  input[type=range]{accent-color:var(--accent)}
   .cmp{position:relative;width:100%;overflow:hidden;border-radius:8px;background:#000;user-select:none;touch-action:none}
   .cmp-img{display:block;width:100%;pointer-events:none}
   .cmp-before{position:absolute;top:0;left:0;height:100%;width:50%;overflow:hidden}
@@ -138,6 +140,14 @@
     </div>
   </div>
 
+  <div id="customRate" class="card" style="display:none;padding:12px 14px;margin-bottom:6px">
+    <div class="row-inline"><label style="color:var(--muted);width:60px">Target</label>
+      <input type="range" id="crBitrate" min="1" max="100" step="0.5" value="12" style="flex:1">
+      <span id="crVal" style="width:80px;text-align:right">12 Mbps</span></div>
+    <div id="crZone" style="height:6px;border-radius:3px;margin-top:8px;background:var(--chip)"></div>
+    <div id="crVerdict" class="hint" style="margin-top:5px"></div>
+  </div>
+
   <div class="card now">
     <div class="lbl">NOW RUNNING</div>
     <div class="file" id="nowFile">—</div>
@@ -147,6 +157,7 @@
     <div class="bar" id="batchBarWrap" style="display:none"><i id="batchBar" style="background:#1a7f37"></i></div>
   </div>
 
+  <div id="estimate" class="statusbar" style="margin:6px 0 2px"></div>
   <div class="actions">
     <button class="primary" id="btnConvert" onclick="convert()" disabled>Convert</button>
     <button class="danger" id="btnCancel" onclick="cancel()" disabled>Cancel</button>
@@ -175,14 +186,18 @@
     <select id="st_audio"><option value="copy">Copy (no re-encode)</option>
       <option value="aac">Re-encode to AAC 192k</option></select>
     <h3>Bitrate / quality (HEVC only)</h3>
-    <label>Target for Custom (Mbps)</label><input type="number" id="st_target_mbps" min="1" max="200" step="0.5">
-    <label>CRF (Quality mode)</label><input type="number" id="st_crf" min="0" max="51">
+    <label>Target for Custom (Mbps)</label>
+    <div class="row-inline"><input type="range" id="st_target_mbps" min="1" max="100" step="0.5" style="flex:1"><span id="st_target_mbps_v" class="slv"></span></div>
+    <label>CRF (Quality mode)</label>
+    <div class="row-inline"><input type="range" id="st_crf" min="0" max="51" step="1" style="flex:1"><span id="st_crf_v" class="slv"></span></div>
     <label>Encoder preset</label><select id="st_preset"></select>
     <h3>Deband &amp; dither</h3>
-    <label>Deband range</label><input type="number" id="st_deband_range" min="1" max="64">
+    <label>Deband range</label>
+    <div class="row-inline"><input type="range" id="st_deband_range" min="1" max="64" step="1" style="flex:1"><span id="st_deband_range_v" class="slv"></span></div>
     <label>Deband blur</label>
     <select id="st_deband_blur"><option value="true">On</option><option value="false">Off</option></select>
-    <label>Dither amount</label><input type="number" id="st_dither" min="0" max="20">
+    <label>Dither amount</label>
+    <div class="row-inline"><input type="range" id="st_dither" min="0" max="20" step="1" style="flex:1"><span id="st_dither_v" class="slv"></span></div>
     <label>Custom threshold</label><input type="text" id="st_thr_custom">
     <label>Deflicker</label>
     <select id="st_deflicker"><option value="false">Off</option><option value="true">On (luminance flicker)</option></select>
@@ -243,7 +258,8 @@
 
 <script>
 const API = "";
-let queue = [];            // [{path,name,status,pct}]
+let SETTINGS = {};
+let queue = [];            // [{path,name,status,pct,dur,kbps,width,height,fps}]
 let running = false;
 let mode = "HEVC (smaller, delivery)";
 let strength = "Medium";
@@ -258,9 +274,9 @@ function segInit(id, cb){
       b.classList.add("on"); cb(b.dataset.v); };
   });
 }
-segInit("segMode", v=>mode=v);
-segInit("segStr", v=>strength=v);
-segInit("segRate", v=>{ rate=v; if(v==="Custom") setStatus("Custom bitrate uses the target Mbps in Settings."); });
+segInit("segMode", v=>{mode=v; updateCustomRate(); updateEstimate();});
+segInit("segStr", v=>{strength=v; updateEstimate();});
+segInit("segRate", v=>{ rate=v; updateCustomRate(); updateEstimate(); });
 
 function setSeg(id,val){ const b=[...document.getElementById(id).querySelectorAll("button")].find(x=>x.dataset.v===val); if(b) b.click(); }
 const PRESETS={
@@ -272,7 +288,9 @@ async function applyPreset(name){
   const p=PRESETS[name]; if(!p) return;
   setSeg("segMode",p.mode); setSeg("segStr",p.strength); setSeg("segRate",p.rate);
   const cur=await j("/api/settings");
-  await j("/api/settings",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({...cur,...p.settings})});
+  SETTINGS={...cur,...p.settings};
+  await j("/api/settings",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(SETTINGS)});
+  updateCustomRate(); updateEstimate();
   setStatus(`Preset applied: ${p.label}.`);
 }
 
@@ -308,7 +326,7 @@ function removeSel(){
   queue=queue.filter((_,i)=>!checks.includes(i)); renderQueue(queue); refreshConvert();
 }
 function clearQueue(){ queue=[]; renderQueue(queue); refreshConvert(); setStatus("Queue cleared."); }
-function refreshConvert(){ document.getElementById("btnConvert").disabled = running || !queue.length; }
+function refreshConvert(){ document.getElementById("btnConvert").disabled = running || !queue.length; updateEstimate(); if(rate==="Custom") drawZones(); }
 
 async function convert(){
   if(!queue.length) return;
@@ -357,6 +375,7 @@ async function openSettings(){
   st_dither.value=s.dither; st_thr_custom.value=s.thr_custom;
   st_target_mbps.value=s.target_mbps; st_deflicker.value=String(s.deflicker);
   st_max_quality.value=String(s.max_quality);
+  syncSlv();
   document.getElementById("mSettings").classList.add("on");
 }
 async function pickDest(){
@@ -374,6 +393,7 @@ async function saveSettings(){
     max_quality:st_max_quality.value==="true"};
   if(body.dest_mode==="custom" && !body.dest_dir){ alert("Choose an output folder, or switch back to “Next to each source”."); return; }
   await j("/api/settings",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+  SETTINGS=body; updateEstimate(); updateCustomRate();
   closeModal("mSettings"); setStatus("Settings saved.");
 }
 function closeModal(id){ document.getElementById(id).classList.remove("on"); }
@@ -463,6 +483,60 @@ qEl.addEventListener("drop",async e=>{
   renderQueue(queue); refreshConvert();
   setStatus(`${queue.length} file(s) queued. Dropped files convert into your Downloads folder.`);
 });
+
+// ---- estimates + bitrate guidance ----
+function human(b){const u=["B","KB","MB","GB","TB"];let i=0;while(b>=1024&&i<u.length-1){b/=1024;i++;}return (i>=2?b.toFixed(1):Math.round(b))+" "+u[i];}
+function estBytes(it){
+  const dur=it.dur||0; if(!dur) return null;
+  if(mode.startsWith("ProRes")){ const fps=it.fps||30,w=it.width||1920,h=it.height||1080; return w*h*5.31*fps*dur/8; }
+  if(rate==="Match source") return (it.kbps||0)*1000/8*dur;
+  if(rate==="Custom") return ((SETTINGS.target_mbps||12)*1e6+192000)/8*dur;
+  return null; // CRF varies
+}
+function updateEstimate(){
+  const el=document.getElementById("estimate");
+  if(!queue.length){ el.textContent=""; return; }
+  if(!mode.startsWith("ProRes") && rate==="Quality (CRF)"){ el.textContent=`Estimated output: varies with content (quality mode, CRF ${SETTINGS.crf??18})`; return; }
+  let total=0,unknown=0;
+  queue.forEach(it=>{const b=estBytes(it); if(b==null)unknown++; else total+=b;});
+  let s=`Estimated output: ~${human(total)} (${queue.length} file${queue.length>1?'s':''})`;
+  if(mode.startsWith("ProRes")) s+=" · ProRes estimate approximate";
+  if(unknown) s+=` · ${unknown} without duration info`;
+  el.textContent=s;
+}
+function refMbps(){let m=0;queue.forEach(it=>{if(it.kbps)m=Math.max(m,it.kbps/1000);});return m;}
+function drawZones(){
+  const el=document.getElementById("crBitrate"),max=+el.max,v=+el.value,ref=refMbps();
+  const zone=document.getElementById("crZone"),verdict=document.getElementById("crVerdict");
+  if(ref>0){
+    const s=Math.min(100,ref/max*100),s2=Math.min(100,2*ref/max*100);
+    zone.style.background=`linear-gradient(to right,#1a7f37 0 ${s}%,#c98a00 ${s}% ${s2}%,#b42318 ${s2}% 100%)`;
+    verdict.textContent = v<=ref?`Source ≈ ${ref.toFixed(1)} Mbps · at/below source — safe, smallest file.`
+      : v<=2*ref?`Source ≈ ${ref.toFixed(1)} Mbps · good headroom for grading.`
+      : `Source ≈ ${ref.toFixed(1)} Mbps · above ~2× source — diminishing returns (wasted space).`;
+  } else { zone.style.background="var(--chip)"; verdict.textContent="Add files to see source-relative guidance."; }
+}
+function updateCustomRate(){
+  const show=rate==="Custom"; document.getElementById("customRate").style.display=show?"block":"none";
+  if(!show) return;
+  const el=document.getElementById("crBitrate"); el.value=SETTINGS.target_mbps||12;
+  document.getElementById("crVal").textContent=(+el.value).toFixed(1)+" Mbps"; drawZones();
+}
+let crTimer=null;
+document.getElementById("crBitrate").addEventListener("input",()=>{
+  const v=+document.getElementById("crBitrate").value;
+  document.getElementById("crVal").textContent=v.toFixed(1)+" Mbps";
+  SETTINGS.target_mbps=v; drawZones(); updateEstimate();
+  clearTimeout(crTimer); crTimer=setTimeout(()=>saveOne({target_mbps:v}),300);
+});
+async function saveOne(patch){ const cur=await j("/api/settings"); SETTINGS={...cur,...patch};
+  await j("/api/settings",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(SETTINGS)}); }
+// settings sliders -> live labels
+const SLV=[["st_crf",v=>v],["st_dither",v=>v],["st_deband_range",v=>v+" px"],["st_target_mbps",v=>v+" Mbps"]];
+SLV.forEach(([id,f])=>{ const el=document.getElementById(id); if(el) el.addEventListener("input",()=>document.getElementById(id+"_v").textContent=f(el.value)); });
+function syncSlv(){ SLV.forEach(([id,f])=>{const el=document.getElementById(id),lab=document.getElementById(id+"_v"); if(el&&lab)lab.textContent=f(el.value);}); }
+// init
+j("/api/settings").then(s=>{SETTINGS=s; updateEstimate(); updateCustomRate();});
 
 renderQueue(queue);
 </script>
