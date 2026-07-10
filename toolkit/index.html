@@ -114,6 +114,7 @@
     <button class="ghost" onclick="openScopes()">📊 Preview scopes</button>
     <button class="ghost" onclick="checkBanding()">🔍 Check banding</button>
     <button class="ghost" id="watchBtn" onclick="toggleWatchPanel()">👁 Watch folder</button>
+    <button class="ghost" onclick="openReport()">📋 Last report</button>
     <button class="ghost" onclick="openSettings()">⚙ Settings</button>
     <button class="ghost" onclick="document.getElementById('mHelp').classList.add('on')" title="What this does">? Help</button>
   </div>
@@ -282,6 +283,12 @@
   <pre id="msgBody" style="white-space:pre-wrap;word-break:break-word;background:var(--surface-0,#0000000d);
     padding:12px;border-radius:8px;max-height:50vh;overflow:auto;font-size:12px"></pre>
   <div class="set-actions"><button class="ghost" onclick="closeModal('mMsg')">Close</button></div>
+</div></div>
+
+<div class="modal" id="mReport"><div class="sheet">
+  <h2>Last batch report</h2>
+  <div id="reportBody" class="hint">No conversions run yet.</div>
+  <div class="set-actions"><button class="ghost" onclick="closeModal('mReport')">Close</button></div>
 </div></div>
 
 <div class="modal" id="mCompare"><div class="sheet">
@@ -495,6 +502,31 @@ async function saveSettings(){
   closeModal("mSettings"); setStatus("Settings saved.");
 }
 function closeModal(id){ document.getElementById(id).classList.remove("on"); }
+
+// ---- batch report ----
+async function openReport(){
+  const r=await j("/api/report");
+  const body=document.getElementById("reportBody");
+  if(!r || !r.time){ body.textContent="No conversions run yet."; document.getElementById("mReport").classList.add("on"); return; }
+  const rows=(r.items||[]).map(it=>`<tr>
+      <td>${it.name}</td><td class="s-${it.status}">${it.status}</td>
+      <td>${it.in_size||"—"} → ${it.out_size||"—"}</td>
+      <td style="font-size:12px;color:var(--muted)">${it.info||""}</td>
+    </tr>`).join("");
+  body.innerHTML=`
+    <div class="row-inline" style="margin-bottom:8px;flex-wrap:wrap;gap:16px">
+      <div><b>${r.time}</b></div>
+      <div>${r.done} done${r.skipped?`, ${r.skipped} skipped`:""}${r.failed?`, ${r.failed} failed`:""}${r.cancelled?", cancelled":""}</div>
+      <div>${r.total_in_size||"—"} → ${r.total_out_size||"—"}</div>
+      <div>${r.elapsed_sec}s</div>
+    </div>
+    <div class="hint" style="margin-bottom:8px">${r.mode} · ${r.strength} deband · ${r.rate}</div>
+    <table style="width:100%;border-collapse:collapse;font-size:13px">
+      <tr style="text-align:left;color:var(--muted)"><th>File</th><th>Status</th><th>Size</th><th>Detail</th></tr>
+      ${rows}
+    </table>`;
+  document.getElementById("mReport").classList.add("on");
+}
 
 // ---- watch folder ----
 let watchPoll=null;

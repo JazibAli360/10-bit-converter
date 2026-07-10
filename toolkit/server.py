@@ -480,6 +480,53 @@ class Job:
 
 JOB = Job()
 
+LAST_REPORT = {}
+REPORT_LOG_PATH = os.path.join(HERE, ".10bit_conversion_log.jsonl")
+
+
+def build_and_store_report(items, mode, strength, rate, settings, done, skipped, failed, cancelled, started):
+    """A human-readable summary of what a batch just did: what was converted,
+    with what settings, and the size/duration outcome. Kept in memory for the
+    UI and appended to a log file on disk for later troubleshooting/reference."""
+    rows = []
+    total_in = total_out = 0
+    for it in items:
+        in_size = 0
+        try:
+            in_size = os.path.getsize(it["path"]) if os.path.exists(it["path"]) else 0
+        except OSError:
+            pass
+        out_size = 0
+        out_path = it.get("out")
+        if out_path and os.path.exists(out_path):
+            try:
+                out_size = os.path.getsize(out_path)
+            except OSError:
+                pass
+        total_in += in_size
+        total_out += out_size
+        rows.append({"name": it["name"], "status": it.get("status"), "info": it.get("info", ""),
+                     "in_size": human_size(in_size) if in_size else "", "out_size": human_size(out_size) if out_size else ""})
+    report = {
+        "time": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(started)) if started else "",
+        "mode": mode, "strength": strength, "rate": rate,
+        "settings": {k: settings.get(k) for k in PRESET_SETTINGS_KEYS},
+        "done": done, "skipped": skipped, "failed": failed, "cancelled": cancelled,
+        "total_in_size": human_size(total_in) if total_in else "",
+        "total_out_size": human_size(total_out) if total_out else "",
+        "elapsed_sec": round(time.time() - started, 1) if started else 0,
+        "items": rows,
+    }
+    LAST_REPORT.clear()
+    LAST_REPORT.update(report)
+    try:
+        with open(REPORT_LOG_PATH, "a") as f:
+            f.write(json.dumps(report) + "\n")
+    except Exception:
+        pass
+    return report
+
+
 # Watch folder: polls a folder for new videos and auto-converts them using
 # whatever mode/strength/rate the user last ran manually (updated in the
 # /api/convert handler). Runs in its own daemon thread, started once in main().
@@ -702,10 +749,14 @@ def run_batch(items, mode, strength, rate, settings):
         if cancelled:
             parts.append("cancelled")
         summary = "Finished: " + ", ".join(parts) + "."
+        started_at = JOB.started
         with JOB.lock:
             JOB.running = False
             JOB.summary = summary
             JOB.now = {"file": "—", "pct": 0, "frame": "", "fps": "", "speed": "", "eta": "--:--"}
+        if items:
+            build_and_store_report(items, mode, strength, rate, settings,
+                                   done, skipped, failed, cancelled, started_at)
         if last_output and not cancelled:
             subprocess.run(["open", "-R", last_output])
         if items and not cancelled:
@@ -909,6 +960,8 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, load_custom_presets())
         elif u.path == "/api/watch":
             self._send(200, dict(WATCH))
+        elif u.path == "/api/report":
+            self._send(200, dict(LAST_REPORT))
         elif u.path in ("/api/scope", "/api/compare-image", "/api/filmstrip-image"):
             q = urllib.parse.parse_qs(u.query)
             token = q.get("token", [""])[0]
