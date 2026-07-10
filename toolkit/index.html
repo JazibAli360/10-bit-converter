@@ -81,6 +81,10 @@
   .slv{width:64px;text-align:right;color:var(--ink);font-variant-numeric:tabular-nums}
   input[type=range]{accent-color:var(--accent)}
   .zonebar{height:5px;border-radius:3px;margin-top:4px;background:var(--chip)}
+  .banner{border-radius:10px;padding:10px 14px;margin:10px 0;font-size:13px;line-height:1.5}
+  .banner-low{background:rgba(26,127,55,.12);color:#1a7f37;border:1px solid rgba(26,127,55,.3)}
+  .banner-moderate{background:rgba(201,138,0,.12);color:#c98a00;border:1px solid rgba(201,138,0,.3)}
+  .banner-high{background:rgba(180,35,24,.12);color:#b42318;border:1px solid rgba(180,35,24,.3)}
   .strip{display:flex;gap:4px;overflow-x:auto;margin-bottom:10px;padding-bottom:2px}
   .strip img{height:56px;border-radius:6px;cursor:pointer;opacity:.7;border:2px solid transparent;flex-shrink:0}
   .strip img:hover{opacity:1}
@@ -108,6 +112,7 @@
     <button class="ghost" onclick="clearQueue()">Clear</button>
     <span class="spacer"></span>
     <button class="ghost" onclick="openScopes()">📊 Preview scopes</button>
+    <button class="ghost" onclick="checkBanding()">🔍 Check banding</button>
     <button class="ghost" onclick="openSettings()">⚙ Settings</button>
     <button class="ghost" onclick="document.getElementById('mHelp').classList.add('on')" title="What this does">? Help</button>
   </div>
@@ -119,6 +124,7 @@
     <button class="ghost" onclick="applyPreset('preserve')" title="HEVC · Match source · 16-bit · copy audio">Max preservation</button>
   </div>
 
+  <div id="bandingBanner" style="display:none"></div>
   <div class="card queue" id="queue"></div>
 
   <div class="options">
@@ -426,6 +432,23 @@ async function saveSettings(){
   closeModal("mSettings"); setStatus("Settings saved.");
 }
 function closeModal(id){ document.getElementById(id).classList.remove("on"); }
+
+// ---- banding meter ----
+async function checkBanding(){
+  const sel=[...document.querySelectorAll("#queue input:checked")].map(c=>+c.dataset.i);
+  const target = sel.length? queue[sel[0]] : queue[0];
+  const banner=document.getElementById("bandingBanner");
+  if(!target){ setStatus("Add (or tick) a file first, then Check banding."); return; }
+  banner.style.display="block"; banner.className="banner banner-moderate";
+  banner.textContent=`Analyzing ${target.name} for banding…`;
+  const r=await j("/api/banding-meter",{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({path:target.path})});
+  if(r.band==="unknown"){ banner.textContent=r.message; return; }
+  banner.className="banner banner-"+r.band;
+  const label={low:"Low",moderate:"Moderate",high:"High"}[r.band]||r.band;
+  banner.innerHTML=`<b>${label} banding estimate</b> (${r.score}, ${r.samples} sample frame${r.samples>1?'s':''}) — ${r.message} `
+    +`<span style="opacity:.75">This is a heuristic, not a precise measurement — use Preview scopes or Compare to confirm visually.</span>`;
+}
 
 // ---- scopes ----
 let scopesTarget=null;

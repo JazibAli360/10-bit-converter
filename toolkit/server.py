@@ -218,6 +218,89 @@ def human_size(n):
     return f"{n:.1f} TB"
 
 
+def _column_banding_score(raw, w, h, min_run=3, min_change=6, win=15, agree_frac=0.65, step=8):
+    """Fraction of sampled pixels that sit in a monotonic, staircase-like
+    plateau: a run of >=min_run identical values flanked by different values
+    (a 'step'), where the surrounding window mostly trends in the same
+    direction (rules out noisy texture/grass/crowd, which flips direction
+    often) and spans a real overall change (rules out flat solid colour).
+    This is the direct visual definition of banding: a gradient rendered as
+    discrete steps instead of a continuous ramp."""
+    banded = 0
+    total = 0
+    for c in range(0, w, step):
+        col = raw[c:c + w * h:w]  # bytes object supports slicing with a stride
+        i = 0
+        while i < h:
+            j = i
+            v = col[i]
+            while j < h and col[j] == v:
+                j += 1
+            run = j - i
+            if run >= min_run:
+                left = col[i - 1] if i > 0 else v
+                right = col[j] if j < h else v
+                if left != v and right != v:
+                    direction = 1 if right > left else (-1 if right < left else 0)
+                    lo, hi = max(0, i - win), min(h, j + win)
+                    window = col[lo:hi]
+                    span = max(window) - min(window)
+                    diffs = [window[k + 1] - window[k] for k in range(len(window) - 1)]
+                    agree = sum(1 for d in diffs if d == 0 or (direction != 0 and (d > 0) == (direction > 0)))
+                    frac = agree / len(diffs) if diffs else 0
+                    if span >= min_change and direction != 0 and frac >= agree_frac:
+                        banded += run
+            total += run
+            i = j
+    return (banded / total * 100) if total else 0.0
+
+
+def analyze_banding(path, samples=4):
+    """Heuristic (non-ML) estimate of how much visible 8-bit banding a clip
+    likely has, so users can skip conversion on already-clean footage. This
+    is a triage signal, not a precise measurement — always cross-check with
+    Preview scopes / Compare on the actual clip."""
+    dur = probe_duration(path)
+    info = probe_info(path)
+    sw, sh = info.get("width") or 0, info.get("height") or 0
+    if not sw or not sh:
+        return {"score": 0, "band": "unknown", "message": "Couldn't read this file's resolution.", "samples": 0}
+    # Cap analysis width so a 4K+ source doesn't blow up runtime. Nearest-
+    # neighbour scaling preserves exact step edges — bilinear would blur them
+    # away and destroy the very signal we're detecting (this bit us during
+    # development). Computed in Python (not read back from ffprobe, which has
+    # no -vf option) so it always matches ffmpeg's own scale=W:-2 rounding.
+    if sw > 1920:
+        w = 1920
+        h = round(sh * 1920 / sw / 2) * 2
+    else:
+        w, h = sw, sh
+    times = [round(dur * (i + 0.5) / samples, 2) for i in range(samples)] if dur else [1.0]
+    scores = []
+    for t in times:
+        vf = f"format=gray,scale={w}:{h}:flags=neighbor"
+        r = subprocess.run(["ffmpeg", "-v", "error", "-ss", f"{t}", "-i", path,
+                            "-frames:v", "1", "-vf", vf, "-f", "rawvideo", "-"],
+                           capture_output=True)
+        if r.returncode != 0 or not r.stdout or len(r.stdout) != w * h:
+            continue  # skip this sample rather than misread bytes on a mismatch
+        scores.append(_column_banding_score(r.stdout, w, h))
+    if not scores:
+        return {"score": 0, "band": "unknown", "message": "Couldn't analyze this file.", "samples": 0}
+    score = sum(scores) / len(scores)
+    if score < 10:
+        band, message = "low", ("Low banding detected — this footage already looks fairly smooth. "
+                                 "10-bit conversion will still add grading headroom and a touch of "
+                                 "dither, but don't expect a dramatic visible change.")
+    elif score < 35:
+        band, message = "moderate", ("Some banding detected — a Medium or High deband pass should "
+                                      "show a visible improvement in gradients (skies, smoke, gradients).")
+    else:
+        band, message = "high", ("Significant banding detected — this footage should show a clear "
+                                  "improvement after conversion. Check Preview scopes to confirm.")
+    return {"score": round(score, 1), "band": band, "message": message, "samples": len(scores)}
+
+
 def verify_output(path):
     pf = probe_pix_fmt(path)
     bits = pixfmt_bits(pf)
@@ -773,6 +856,13 @@ class Handler(BaseHTTPRequestHandler):
                 return
             token, times = render_filmstrip(path, int(data.get("count", 8)))
             self._send(200, {"token": token, "times": times})
+        elif u.path == "/api/banding-meter":
+            data = self._read_json()
+            path = data.get("path")
+            if not path or not os.path.isfile(path):
+                self._send(400, {"error": "file not found"})
+                return
+            self._send(200, analyze_banding(path))
         elif u.path == "/api/compare":
             data = self._read_json()
             src, out = data.get("src"), data.get("out")
