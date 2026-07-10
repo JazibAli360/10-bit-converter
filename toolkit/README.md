@@ -50,6 +50,14 @@ prompt level, not with a bit-depth conversion.
   amount of debanding to how bad the banding actually is.
 - **Cancel button (GUI)** — stop a running conversion/batch instantly; the
   in-progress output file is cleaned up so nothing broken is left behind.
+- **Queue table (GUI)** — each file shows its own status (Queued → Running →
+  Done / Failed / Skipped / Cancelled) and per-file progress %, active row
+  highlighted.
+- **Live "Now running" panel (GUI)** — shows the current file with live %,
+  frame, fps, encode speed and ETA parsed straight from ffmpeg.
+- **Settings (GUI)** — output folder, filename suffix, skip-vs-overwrite,
+  HEVC CRF + preset, deband range/blur, dither amount, and a custom deband
+  threshold. Saved to disk so your choices persist between launches.
 
 ## Files in this toolkit
 
@@ -58,11 +66,13 @@ Double-click to install everything needed and launch the GUI. See Quick start
 above.
 
 ### `10bit_converter_gui.py`
-The GUI. A queue you can fill with **multiple files or a whole folder**, a
-format dropdown (HEVC vs ProRes 4444), a **deband-strength dropdown**
-(Low/Medium/High), a **real percentage progress bar**, and a **Cancel button**
-that stops a running batch immediately (the partial output is discarded). Run
-directly with:
+The GUI. A **queue table** you fill with multiple files or a whole folder —
+each row shows its status and progress %. A format dropdown (HEVC vs ProRes
+4444), a **deband-strength dropdown** (Low/Medium/High/Custom), a **live
+"Now running" panel** (%, frame, fps, speed, ETA), a **Cancel button** that
+stops immediately (partial output discarded), and a **Settings…** dialog
+(output folder, suffix, skip/overwrite, CRF, preset, deband range/blur,
+dither, custom threshold — persisted between launches). Run directly with:
 ```bash
 python3 10bit_converter_gui.py
 ```
