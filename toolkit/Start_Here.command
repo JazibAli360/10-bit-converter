@@ -86,23 +86,23 @@ if [[ -n "$PYBIN" ]] && ! "$PYBIN" -c "import tkinter" >/dev/null 2>&1; then
   fi
 fi
 
-# --- 5. customtkinter (the modern GUI toolkit — required) ---
-if [[ -n "$PYBIN" ]] && ! "$PYBIN" -c "import customtkinter" >/dev/null 2>&1; then
-  warn "The GUI toolkit (customtkinter) is not installed."
-  if ask "Install customtkinter now?"; then
-    "$PYBIN" -m pip install --user customtkinter >/dev/null 2>&1 \
-      && ok "customtkinter installed." \
-      || warn "Couldn't install customtkinter — trying anyway; if the GUI fails, run: pip3 install customtkinter"
+# --- 5. Optional: drag-and-drop support (tkinterdnd2) ---
+if [[ -n "$PYBIN" ]] && "$PYBIN" -c "import tkinter" >/dev/null 2>&1 \
+   && ! "$PYBIN" -c "import tkinterdnd2" >/dev/null 2>&1; then
+  if ask "Enable drag-and-drop into the app (optional)?"; then
+    "$PYBIN" -m pip install --user tkinterdnd2 >/dev/null 2>&1 \
+      && ok "Drag-and-drop enabled." \
+      || warn "Couldn't install tkinterdnd2 — the app still works via the Add buttons."
   fi
 fi
 
 # --- 6. Launch the GUI ---
 say
-if [[ -n "$PYBIN" ]] && "$PYBIN" -c "import tkinter, customtkinter" >/dev/null 2>&1; then
+if [[ -n "$PYBIN" ]] && "$PYBIN" -c "import tkinter" >/dev/null 2>&1; then
   ok "All set. Launching the converter…"
   exec "$PYBIN" "./10bit_converter_gui.py"
 else
-  err "The GUI needs Python 3 + Tk + customtkinter, which aren't ready."
+  err "The GUI needs Python 3 + Tk, which aren't ready."
   say "You can still convert from Terminal with:"
   say "  ${BOLD}./8bit_to_10bit.sh yourvideo.mp4${RESET}"
   read -r -p "Press Return to close." </dev/tty

@@ -52,6 +52,10 @@ prompt level, not with a bit-depth conversion.
   print live percentage, both parsed from ffmpeg (no more fake spinner).
 - **Deband strength control** — Low / Medium / High, so you can match the
   amount of debanding to how bad the banding actually is.
+- **Scopes preview (GUI)** — before converting, click “Preview scopes” to see
+  the selected clip’s frame + histogram, source vs processed, side by side.
+  Banding shows as a comb (gaps) in the histogram; after debanding it fills in.
+  Lets you dial in strength and *see* the effect before a full encode.
 - **Cancel button (GUI)** — stop a running conversion/batch instantly; the
   in-progress output file is cleaned up so nothing broken is left behind.
 - **Queue table (GUI)** — each file shows its own status (Queued → Running →
@@ -103,10 +107,14 @@ Options:
 
 ## One-time setup (if you're not using Start_Here)
 
-ffmpeg is bundled, so you only need Python + the GUI toolkit:
+ffmpeg is bundled and the GUI uses standard Tkinter (no extra toolkit), so
+usually there's nothing to install. If your Python has no Tk at all:
 ```bash
-brew install python-tk        # Python 3 with Tk (skip if you already have it)
-pip3 install customtkinter    # the modern GUI toolkit
+brew install python-tk        # Python 3 with Tk
+```
+Optional drag-and-drop into the GUI:
+```bash
+pip3 install tkinterdnd2
 ```
 (On Intel Macs with no bundled ffmpeg, also: `brew install ffmpeg`.)
 
