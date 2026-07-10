@@ -51,6 +51,7 @@ DEFAULT_SETTINGS = {
     "audio": "copy",           # "copy" (lossless, no re-encode) or "aac"
     "denoise": "off",          # "off" | "light" | "medium" (hqdn3d; softens slightly)
     "two_pass": False,         # 2-pass HEVC for accurate target bitrate (Match/Custom)
+    "dual_export": False,      # when Format=ProRes, also produce an HEVC preview alongside it
 }
 
 DENOISE_FILTER = {"light": "hqdn3d=2:1:2:3", "medium": "hqdn3d=4:3:6:6"}
@@ -469,100 +470,132 @@ def run_batch(items, mode, strength, rate, settings):
         JOB.total = total
         JOB.started = time.time()
 
-    for idx, it in enumerate(items, start=1):
-        if JOB.cancel.is_set():
-            break
-        with JOB.lock:
-            JOB.index = idx
-        in_path = it["path"]
-        out_path = make_output_path(in_path, is_prores, dest_dir, suffix)
-        if dest_dir and not os.path.isdir(dest_dir):
+    try:
+        for idx, it in enumerate(items, start=1):
+            if JOB.cancel.is_set():
+                break
             try:
-                os.makedirs(dest_dir, exist_ok=True)
-            except OSError:
-                pass
-        if os.path.exists(out_path) and not overwrite:
-            skipped += 1
-            _set_item(idx - 1, status="Skipped", pct="—")
-            continue
-        aud = audio_args(in_path, is_prores, settings.get("audio", "copy"))
-        col = color_args(in_path)
-        pre_cmd = None
-        if is_prores:
-            cmd = ["ffmpeg", "-y", "-nostats", "-i", in_path, "-vf", filters,
-                   "-c:v", "prores_ks", "-profile:v", "4444", "-pix_fmt", "yuv444p10le",
-                   *(["-c:a", "pcm_s16le"] if aud == ["-an"] else aud), *col,
-                   "-progress", "pipe:1", out_path]
-        else:
-            rate_args = hevc_rate_args(rate, settings, in_path)
-            base = ["ffmpeg", "-y", "-nostats", "-i", in_path, "-vf", filters,
-                    "-c:v", "libx265", "-pix_fmt", "yuv420p10le", *rate_args,
-                    "-preset", str(settings["preset"])]
-            # Two-pass only makes sense with a bitrate target (not CRF).
-            two_pass = bool(settings.get("two_pass")) and "-b:v" in rate_args
-            if two_pass:
-                stats = os.path.join(INTAKE_DIR, f"2pass_{idx}.log")
-                pre_cmd = [*base, "-x265-params", f"pass=1:stats={stats}", "-an",
-                           "-f", "null", "-progress", "pipe:1", os.devnull]
-                cmd = [*base, "-x265-params", f"pass=2:stats={stats}", "-tag:v", "hvc1",
-                       *aud, *col, "-progress", "pipe:1", out_path]
-            else:
-                cmd = [*base, "-tag:v", "hvc1", *aud, *col, "-progress", "pipe:1", out_path]
-        src_bits = pixfmt_bits(probe_pix_fmt(in_path))
-        dur = probe_duration(in_path)
-        name = it["name"]
-        _set_item(idx - 1, status="Running", pct="0%")
+                with JOB.lock:
+                    JOB.index = idx
+                in_path = it["path"]
+                out_path = make_output_path(in_path, is_prores, dest_dir, suffix)
+                if dest_dir and not os.path.isdir(dest_dir):
+                    try:
+                        os.makedirs(dest_dir, exist_ok=True)
+                    except OSError:
+                        pass
+                if os.path.exists(out_path) and not overwrite:
+                    skipped += 1
+                    _set_item(idx - 1, status="Skipped", pct="—")
+                    continue
+                aud = audio_args(in_path, is_prores, settings.get("audio", "copy"))
+                col = color_args(in_path)
+                pre_cmd = None
+                if is_prores:
+                    cmd = ["ffmpeg", "-y", "-nostats", "-i", in_path, "-vf", filters,
+                           "-c:v", "prores_ks", "-profile:v", "4444", "-pix_fmt", "yuv444p10le",
+                           *(["-c:a", "pcm_s16le"] if aud == ["-an"] else aud), *col,
+                           "-progress", "pipe:1", out_path]
+                else:
+                    rate_args = hevc_rate_args(rate, settings, in_path)
+                    base = ["ffmpeg", "-y", "-nostats", "-i", in_path, "-vf", filters,
+                            "-c:v", "libx265", "-pix_fmt", "yuv420p10le", *rate_args,
+                            "-preset", str(settings["preset"])]
+                    # Two-pass only makes sense with a bitrate target (not CRF).
+                    two_pass = bool(settings.get("two_pass")) and "-b:v" in rate_args
+                    if two_pass:
+                        stats = os.path.join(INTAKE_DIR, f"2pass_{idx}.log")
+                        pre_cmd = [*base, "-x265-params", f"pass=1:stats={stats}", "-an",
+                                   "-f", "null", "-progress", "pipe:1", os.devnull]
+                        cmd = [*base, "-x265-params", f"pass=2:stats={stats}", "-tag:v", "hvc1",
+                               *aud, *col, "-progress", "pipe:1", out_path]
+                    else:
+                        cmd = [*base, "-tag:v", "hvc1", *aud, *col, "-progress", "pipe:1", out_path]
+                src_bits = pixfmt_bits(probe_pix_fmt(in_path))
+                dur = probe_duration(in_path)
+                name = it["name"]
+                _set_item(idx - 1, status="Running", pct="0%")
 
-        # Pass 1 (two-pass only): analysis pass, discarded output.
-        if pre_cmd is not None:
-            with JOB.lock:
-                JOB.now = {"file": f"[{idx}/{total}]  {name} — pass 1/2 (analyzing)",
-                           "pct": 0, "frame": "", "fps": "", "speed": "", "eta": "--:--"}
-            e1 = _run_ffmpeg(pre_cmd, dur, idx - 1)
-            if not JOB.cancel.is_set() and e1 is not None:
+                # Pass 1 (two-pass only): analysis pass, discarded output.
+                if pre_cmd is not None:
+                    with JOB.lock:
+                        JOB.now = {"file": f"[{idx}/{total}]  {name} — pass 1/2 (analyzing)",
+                                   "pct": 0, "frame": "", "fps": "", "speed": "", "eta": "--:--"}
+                    e1 = _run_ffmpeg(pre_cmd, dur, idx - 1)
+                    if not JOB.cancel.is_set() and e1 is not None:
+                        failed += 1
+                        _set_item(idx - 1, status="Failed", pct="—", error=e1)
+                        continue
+
+                err = None
+                if not JOB.cancel.is_set():
+                    with JOB.lock:
+                        JOB.now = {"file": f"[{idx}/{total}]  {name}" + (" — pass 2/2" if pre_cmd else ""),
+                                   "pct": 0, "frame": "", "fps": "", "speed": "", "eta": "--:--"}
+                    err = _run_ffmpeg(cmd, dur, idx - 1)
+                if JOB.cancel.is_set():
+                    try:
+                        if os.path.exists(out_path):
+                            os.remove(out_path)
+                    except OSError:
+                        pass
+                    _set_item(idx - 1, status="Cancelled", pct="—")
+                    break
+                if err is not None:
+                    failed += 1
+                    _set_item(idx - 1, status="Failed", pct="—", error=err)
+                    continue
+                done += 1
+                last_output = out_path
+                info = verify_output(out_path)
+                if src_bits >= 10:
+                    info = f"source was {src_bits}-bit (deband only) · " + info
+
+                # Dual export: alongside the ProRes master, also cut a small
+                # HEVC preview from the same filter chain — useful for quick
+                # review/sharing without opening the (huge) grading master.
+                if is_prores and settings.get("dual_export") and not JOB.cancel.is_set():
+                    preview_path = make_output_path(in_path, False, dest_dir, suffix + "_preview")
+                    if not (os.path.exists(preview_path) and not overwrite):
+                        with JOB.lock:
+                            JOB.now = {"file": f"[{idx}/{total}]  {name} — HEVC preview",
+                                       "pct": 0, "frame": "", "fps": "", "speed": "", "eta": "--:--"}
+                        pv_aud = audio_args(in_path, False, settings.get("audio", "copy"))
+                        pv_cmd = ["ffmpeg", "-y", "-nostats", "-i", in_path, "-vf", filters,
+                                  "-c:v", "libx265", "-pix_fmt", "yuv420p10le", "-crf", "20",
+                                  "-preset", "veryfast", "-tag:v", "hvc1", *pv_aud, *col,
+                                  "-progress", "pipe:1", preview_path]
+                        # item_idx=-1: the preview isn't tracked as its own row,
+                        # so route progress updates only to JOB.now, not a row.
+                        pv_err = _run_ffmpeg(pv_cmd, dur, -1)
+                        if pv_err is None and os.path.isfile(preview_path):
+                            info += f" · preview: {os.path.basename(preview_path)} ({verify_output(preview_path)})"
+                        else:
+                            info += " · preview export failed"
+
+                _set_item(idx - 1, status="Done", pct="100%", info=info, out=out_path)
+            except Exception as e:
+                # A crash in one item must not hang the batch forever (JOB.running
+                # would otherwise never be reset) or take down the worker thread
+                # silently — mark this item Failed and move on to the next.
                 failed += 1
-                _set_item(idx - 1, status="Failed", pct="—", error=e1)
+                _set_item(idx - 1, status="Failed", pct="—", error=f"Unexpected error: {e}")
                 continue
-
-        err = None
-        if not JOB.cancel.is_set():
-            with JOB.lock:
-                JOB.now = {"file": f"[{idx}/{total}]  {name}" + (" — pass 2/2" if pre_cmd else ""),
-                           "pct": 0, "frame": "", "fps": "", "speed": "", "eta": "--:--"}
-            err = _run_ffmpeg(cmd, dur, idx - 1)
-        if JOB.cancel.is_set():
-            try:
-                if os.path.exists(out_path):
-                    os.remove(out_path)
-            except OSError:
-                pass
-            _set_item(idx - 1, status="Cancelled", pct="—")
-            break
-        if err is not None:
-            failed += 1
-            _set_item(idx - 1, status="Failed", pct="—", error=err)
-            continue
-        done += 1
-        last_output = out_path
-        info = verify_output(out_path)
-        if src_bits >= 10:
-            info = f"source was {src_bits}-bit (deband only) · " + info
-        _set_item(idx - 1, status="Done", pct="100%", info=info, out=out_path)
-
-    cancelled = JOB.cancel.is_set()
-    parts = [f"{done} done"]
-    if skipped:
-        parts.append(f"{skipped} skipped")
-    if failed:
-        parts.append(f"{failed} failed")
-    if cancelled:
-        parts.append("cancelled")
-    with JOB.lock:
-        JOB.running = False
-        JOB.summary = "Finished: " + ", ".join(parts) + "."
-        JOB.now = {"file": "—", "pct": 0, "frame": "", "fps": "", "speed": "", "eta": "--:--"}
-    if last_output and not cancelled:
-        subprocess.run(["open", "-R", last_output])
+    finally:
+        cancelled = JOB.cancel.is_set()
+        parts = [f"{done} done"]
+        if skipped:
+            parts.append(f"{skipped} skipped")
+        if failed:
+            parts.append(f"{failed} failed")
+        if cancelled:
+            parts.append("cancelled")
+        with JOB.lock:
+            JOB.running = False
+            JOB.summary = "Finished: " + ", ".join(parts) + "."
+            JOB.now = {"file": "—", "pct": 0, "frame": "", "fps": "", "speed": "", "eta": "--:--"}
+        if last_output and not cancelled:
+            subprocess.run(["open", "-R", last_output])
 
 
 def _set_item(i, **kw):
@@ -621,7 +654,7 @@ def _emit(cur, dur, item_idx):
         JOB.now = {"file": JOB.now.get("file", "—"), "pct": round(pct),
                    "frame": cur.get("frame", ""), "fps": cur.get("fps", ""),
                    "speed": speed, "eta": fmt_time(eta)}
-        if 0 <= item_idx < len(JOB.items):
+        if item_idx is not None and 0 <= item_idx < len(JOB.items):
             JOB.items[item_idx]["pct"] = f"{pct:.0f}%"
 
 
