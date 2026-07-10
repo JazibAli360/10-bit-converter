@@ -284,11 +284,23 @@ class Job:
         self.items = []          # [{path,name,status,pct}]
         self.now = {"file": "—", "pct": 0, "frame": "", "fps": "", "speed": "", "eta": "--:--"}
         self.summary = None
+        self.total = 0
+        self.index = 0
+        self.started = 0.0
 
     def snapshot(self):
         with self.lock:
+            overall = 0.0
+            eta = "--:--"
+            if self.running and self.total:
+                overall = min(100.0, ((self.index - 1) + self.now["pct"] / 100) / self.total * 100)
+                el = time.time() - self.started if self.started else 0
+                if overall > 1 and el > 0:
+                    eta = fmt_time(el / (overall / 100) - el)
             return {"running": self.running, "items": list(self.items),
-                    "now": dict(self.now), "summary": self.summary}
+                    "now": dict(self.now), "summary": self.summary,
+                    "batch": {"index": self.index, "total": self.total,
+                              "overall": round(overall), "eta": eta}}
 
 
 JOB = Job()
@@ -326,10 +338,15 @@ def run_batch(items, mode, strength, rate, settings):
     total = len(items)
     done = failed = skipped = 0
     last_output = None
+    with JOB.lock:
+        JOB.total = total
+        JOB.started = time.time()
 
     for idx, it in enumerate(items, start=1):
         if JOB.cancel.is_set():
             break
+        with JOB.lock:
+            JOB.index = idx
         in_path = it["path"]
         out_path = make_output_path(in_path, is_prores, dest_dir, suffix)
         if dest_dir and not os.path.isdir(dest_dir):
@@ -608,6 +625,13 @@ class Handler(BaseHTTPRequestHandler):
         elif u.path == "/api/cancel":
             JOB.cancel.set()
             self._send(200, {"ok": True})
+        elif u.path == "/api/reveal":
+            path = self._read_json().get("path")
+            if path and os.path.exists(path):
+                subprocess.Popen(["open", "-R", path])
+                self._send(200, {"ok": True})
+            else:
+                self._send(404, {"error": "not found"})
         elif u.path == "/api/scopes":
             data = self._read_json()
             path = data.get("path")

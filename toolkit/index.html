@@ -102,6 +102,14 @@
     <span class="spacer"></span>
     <button class="ghost" onclick="openScopes()">📊 Preview scopes</button>
     <button class="ghost" onclick="openSettings()">⚙ Settings</button>
+    <button class="ghost" onclick="document.getElementById('mHelp').classList.add('on')" title="What this does">? Help</button>
+  </div>
+
+  <div class="toolbar" style="margin-top:0">
+    <label style="color:var(--muted);align-self:center;margin-right:2px">Presets</label>
+    <button class="ghost" onclick="applyPreset('delivery')" title="HEVC · Match source · Medium deband">Delivery</button>
+    <button class="ghost" onclick="applyPreset('grading')" title="ProRes 4444 · High deband · 16-bit">Grading</button>
+    <button class="ghost" onclick="applyPreset('preserve')" title="HEVC · Match source · 16-bit · copy audio">Max preservation</button>
   </div>
 
   <div class="card queue" id="queue"></div>
@@ -135,6 +143,8 @@
     <div class="file" id="nowFile">—</div>
     <div class="stats" id="nowStats">idle</div>
     <div class="bar"><i id="bar"></i></div>
+    <div class="stats" id="batchStats" style="margin-top:10px"></div>
+    <div class="bar" id="batchBarWrap" style="display:none"><i id="batchBar" style="background:#1a7f37"></i></div>
   </div>
 
   <div class="actions">
@@ -142,6 +152,9 @@
     <button class="danger" id="btnCancel" onclick="cancel()" disabled>Cancel</button>
   </div>
   <div class="statusbar" id="status">Add files or a folder to begin.</div>
+  <div style="text-align:center;color:var(--muted);font-size:12px;margin-top:14px">
+    Built by <b>Jazib Ali 360</b> · deband + dither + true 10-bit · no AI, no reinterpretation
+  </div>
 </main>
 
 <div class="modal" id="mSettings"><div class="sheet">
@@ -186,6 +199,20 @@
   <h2 id="scopesTitle">Scopes</h2>
   <div id="scopesBody" class="hint">Rendering…</div>
   <div class="set-actions"><button class="ghost" onclick="closeModal('mScopes')">Close</button></div>
+</div></div>
+
+<div class="modal" id="mHelp"><div class="sheet">
+  <h2>What this does</h2>
+  <p style="line-height:1.6;color:var(--ink)">This converts 8-bit AI-generated video to 10-bit. It does three honest things:</p>
+  <ul style="line-height:1.7;color:var(--ink)">
+    <li><b>Kills banding</b> — the visible stepping in skies, smoke, and gradients (deband + dither).</li>
+    <li><b>Adds grading headroom</b> — a true 10-bit intermediate so pushing curves in DaVinci/Premiere doesn't re-introduce banding.</li>
+    <li><b>Optionally 16-bit precision</b> — cleaner gradient math, quantized to 10-bit. Precision only.</li>
+  </ul>
+  <p style="line-height:1.6;color:var(--muted)"><b>What it does NOT do:</b> it can't recover detail that was never generated, and it uses <b>no AI</b> — nothing reinterprets, invents, or removes your detail and texture. If footage looks flat rather than banded, that's a generation-quality issue, not something a bit-depth conversion can fix.</p>
+  <p style="line-height:1.6;color:var(--muted)">Tip: use <b>Preview scopes</b> or <b>Compare</b> to see the effect before committing to a full encode.</p>
+  <div style="border-top:1px solid var(--line);margin-top:14px;padding-top:10px;color:var(--muted);font-size:13px">Built by <b>Jazib Ali 360</b></div>
+  <div class="set-actions"><button class="ghost" onclick="closeModal('mHelp')">Close</button></div>
 </div></div>
 
 <div class="modal" id="mMsg"><div class="sheet">
@@ -235,6 +262,20 @@ segInit("segMode", v=>mode=v);
 segInit("segStr", v=>strength=v);
 segInit("segRate", v=>{ rate=v; if(v==="Custom") setStatus("Custom bitrate uses the target Mbps in Settings."); });
 
+function setSeg(id,val){ const b=[...document.getElementById(id).querySelectorAll("button")].find(x=>x.dataset.v===val); if(b) b.click(); }
+const PRESETS={
+  delivery:{label:"Delivery",mode:"HEVC (smaller, delivery)",strength:"Medium",rate:"Match source",settings:{max_quality:false,audio:"copy"}},
+  grading:{label:"Grading",mode:"ProRes 4444 (grading, huge file)",strength:"High",rate:"Quality (CRF)",settings:{max_quality:true,audio:"copy"}},
+  preserve:{label:"Max preservation",mode:"HEVC (smaller, delivery)",strength:"Medium",rate:"Match source",settings:{max_quality:true,audio:"copy"}},
+};
+async function applyPreset(name){
+  const p=PRESETS[name]; if(!p) return;
+  setSeg("segMode",p.mode); setSeg("segStr",p.strength); setSeg("segRate",p.rate);
+  const cur=await j("/api/settings");
+  await j("/api/settings",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({...cur,...p.settings})});
+  setStatus(`Preset applied: ${p.label}.`);
+}
+
 function renderQueue(items){
   const q=document.getElementById("queue");
   if(!items.length){ q.innerHTML='<div class="empty">Add files, a whole folder, or <b>drag videos here</b>.<br>'
@@ -246,7 +287,7 @@ function renderQueue(items){
     r.innerHTML=`<input type="checkbox" data-i="${i}" ${running?'disabled':''}>
       <span class="name-wrap"><span class="name" title="${it.path||''}">${it.name}</span>
         ${it.info?`<span class="info">${it.info}</span>`:''}</span>
-      ${(st==='Done'&&it.out)?`<button class="mini" data-cmp="${i}">Compare</button>`:''}
+      ${(st==='Done'&&it.out)?`<button class="mini" data-cmp="${i}">Compare</button><button class="mini" data-rev="${i}">Reveal</button>`:''}
       ${(st==='Failed'&&it.error)?`<button class="mini" data-err="${i}">why?</button>`:''}
       <span class="status s-${st}">${st}</span>
       <span class="pct">${it.pct||""}</span>`;
@@ -292,6 +333,12 @@ async function poll(){
     ? `${n.pct}%  •  frame ${n.frame||"?"}  •  ${n.fps||"?"} fps  •  ${n.speed||"?"}  •  ETA ${n.eta}`
     : "idle";
   document.getElementById("bar").style.width=(running?n.pct:0)+"%";
+  const bw=document.getElementById("batchBarWrap");
+  if(running && s.batch && s.batch.total>1){
+    bw.style.display="block";
+    document.getElementById("batchStats").textContent=`File ${s.batch.index} of ${s.batch.total} · ${s.batch.overall}% overall · ETA ${s.batch.eta}`;
+    document.getElementById("batchBar").style.width=s.batch.overall+"%";
+  } else { bw.style.display="none"; document.getElementById("batchStats").textContent=""; }
   if(s.summary && !running){ setStatus(s.summary); }
   setControls();
   if(running) setTimeout(poll,500);
@@ -393,7 +440,8 @@ cmpTime.addEventListener("input",()=>{
 const qEl=document.getElementById("queue");
 qEl.addEventListener("click",e=>{
   const c=e.target.closest("[data-cmp]"); if(c){ openCompare(+c.dataset.cmp); return; }
-  const er=e.target.closest("[data-err]"); if(er){ showMsg("Conversion failed — "+(queue[+er.dataset.err]?.name||""), queue[+er.dataset.err]?.error||"(no details)"); }
+  const er=e.target.closest("[data-err]"); if(er){ showMsg("Conversion failed — "+(queue[+er.dataset.err]?.name||""), queue[+er.dataset.err]?.error||"(no details)"); return; }
+  const rv=e.target.closest("[data-rev]"); if(rv){ const it=queue[+rv.dataset.rev]; if(it?.out) fetch(API+"/api/reveal",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({path:it.out})}); }
 });
 function showMsg(title,text){ document.getElementById("msgTitle").textContent=title;
   document.getElementById("msgBody").textContent=text; document.getElementById("mMsg").classList.add("on"); }
