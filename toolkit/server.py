@@ -554,19 +554,28 @@ def render_scopes(in_path, strength, settings):
     outdir = tempfile.mkdtemp(prefix="scopes_")
     dur = probe_duration(in_path)
     t = max(0.0, dur * 0.4) if dur else 1.0
+    # The `histogram` filter crashes ffmpeg (SIGSEGV) when fed a 16-bit 4:4:4
+    # frame (Max quality mode inserts format=yuv444p16le). Preview scopes are
+    # for visual comparison only, so downconvert to 8-bit right before
+    # `histogram` — this doesn't affect the "after" thumbnail or the real
+    # encode, only this diagnostic view.
     jobs = {
         "src_thumb": "scale=440:-2",
         "src_hist": "histogram=level_height=170,scale=440:-2",
         "aft_thumb": f"{chain},scale=440:-2",
-        "aft_hist": f"{chain},histogram=level_height=170,scale=440:-2",
+        "aft_hist": f"{chain},format=yuv420p,histogram=level_height=170,scale=440:-2",
     }
+    errors = {}
     for which, vf in jobs.items():
-        subprocess.run(["ffmpeg", "-y", "-v", "error", "-ss", f"{t}", "-i", in_path,
-                        "-frames:v", "1", "-vf", vf, os.path.join(outdir, which + ".png")],
-                       capture_output=True)
+        r = subprocess.run(["ffmpeg", "-y", "-v", "error", "-ss", f"{t}", "-i", in_path,
+                           "-frames:v", "1", "-vf", vf, os.path.join(outdir, which + ".png")],
+                          capture_output=True, text=True)
+        out_file = os.path.join(outdir, which + ".png")
+        if r.returncode != 0 or not os.path.isfile(out_file):
+            errors[which] = r.stderr.strip() or f"ffmpeg exited {r.returncode}"
     token = os.path.basename(outdir)
     SCOPES[token] = outdir
-    return token
+    return token, errors
 
 
 COMPARE = {}   # token -> dir
@@ -706,8 +715,8 @@ class Handler(BaseHTTPRequestHandler):
             if not path or not os.path.isfile(path):
                 self._send(400, {"error": "file not found"})
                 return
-            token = render_scopes(path, data.get("strength", "Medium"), load_settings())
-            self._send(200, {"token": token, "name": os.path.basename(path)})
+            token, errors = render_scopes(path, data.get("strength", "Medium"), load_settings())
+            self._send(200, {"token": token, "name": os.path.basename(path), "errors": errors})
         elif u.path == "/api/compare":
             data = self._read_json()
             src, out = data.get("src"), data.get("out")

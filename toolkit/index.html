@@ -80,6 +80,7 @@
   .row-inline{display:flex;gap:10px;align-items:center}
   .slv{width:64px;text-align:right;color:var(--ink);font-variant-numeric:tabular-nums}
   input[type=range]{accent-color:var(--accent)}
+  .zonebar{height:5px;border-radius:3px;margin-top:4px;background:var(--chip)}
   .cmp{position:relative;width:100%;overflow:hidden;border-radius:8px;background:#000;user-select:none;touch-action:none}
   .cmp-img{display:block;width:100%;pointer-events:none}
   .cmp-before{position:absolute;top:0;left:0;height:100%;width:50%;overflow:hidden}
@@ -189,15 +190,27 @@
     <label>Target for Custom (Mbps)</label>
     <div class="row-inline"><input type="range" id="st_target_mbps" min="1" max="100" step="0.5" style="flex:1"><span id="st_target_mbps_v" class="slv"></span></div>
     <label>CRF (Quality mode)</label>
-    <div class="row-inline"><input type="range" id="st_crf" min="0" max="51" step="1" style="flex:1"><span id="st_crf_v" class="slv"></span></div>
+    <div>
+      <div class="row-inline"><input type="range" id="st_crf" min="0" max="51" step="1" style="flex:1"><span id="st_crf_v" class="slv"></span></div>
+      <div class="zonebar" id="st_crf_zone"></div>
+      <div class="hint" id="st_crf_hint" style="margin-top:2px"></div>
+    </div>
     <label>Encoder preset</label><select id="st_preset"></select>
     <h3>Deband &amp; dither</h3>
     <label>Deband range</label>
-    <div class="row-inline"><input type="range" id="st_deband_range" min="1" max="64" step="1" style="flex:1"><span id="st_deband_range_v" class="slv"></span></div>
+    <div>
+      <div class="row-inline"><input type="range" id="st_deband_range" min="1" max="64" step="1" style="flex:1"><span id="st_deband_range_v" class="slv"></span></div>
+      <div class="zonebar" id="st_deband_range_zone"></div>
+      <div class="hint" id="st_deband_range_hint" style="margin-top:2px"></div>
+    </div>
     <label>Deband blur</label>
     <select id="st_deband_blur"><option value="true">On</option><option value="false">Off</option></select>
     <label>Dither amount</label>
-    <div class="row-inline"><input type="range" id="st_dither" min="0" max="20" step="1" style="flex:1"><span id="st_dither_v" class="slv"></span></div>
+    <div>
+      <div class="row-inline"><input type="range" id="st_dither" min="0" max="20" step="1" style="flex:1"><span id="st_dither_v" class="slv"></span></div>
+      <div class="zonebar" id="st_dither_zone"></div>
+      <div class="hint" id="st_dither_hint" style="margin-top:2px"></div>
+    </div>
     <label>Custom threshold</label><input type="text" id="st_thr_custom">
     <label>Deflicker</label>
     <select id="st_deflicker"><option value="false">Off</option><option value="true">On (luminance flicker)</option></select>
@@ -380,7 +393,7 @@ async function openSettings(){
   st_target_mbps.value=s.target_mbps; st_deflicker.value=String(s.deflicker);
   st_max_quality.value=String(s.max_quality);
   st_denoise.value=s.denoise||"off"; st_two_pass.value=String(s.two_pass);
-  syncSlv();
+  syncSlv(); syncZones();
   document.getElementById("mSettings").classList.add("on");
 }
 async function pickDest(){
@@ -414,12 +427,17 @@ async function openScopes(){
   const r=await j("/api/scopes",{method:"POST",headers:{"Content-Type":"application/json"},
     body:JSON.stringify({path:target.path,strength})});
   if(r.error){ document.getElementById("scopesBody").textContent="Error: "+r.error; return; }
-  const url=w=>`${API}/api/scope?token=${r.token}&which=${w}`;
+  const bust=Date.now();
+  const url=w=>`${API}/api/scope?token=${r.token}&which=${w}&_=${bust}`;
+  const errs=r.errors||{};
+  const cell=w=>errs[w]
+    ? `<div class="hint" style="color:var(--danger)">Couldn't render this view: ${(errs[w]||"").slice(0,160)}</div>`
+    : `<img src="${url(w)}" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'hint',textContent:'Image failed to load.'}))">`;
   document.getElementById("scopesBody").innerHTML=`
     <div class="scopes">
-      <div><h3>Source (8-bit)</h3><img src="${url('src_thumb')}"><img src="${url('src_hist')}"></div>
+      <div><h3>Source (8-bit)</h3>${cell('src_thumb')}${cell('src_hist')}</div>
       <div><h3 style="color:var(--ok)">After (deband + dither · ${strength})</h3>
-        <img src="${url('aft_thumb')}"><img src="${url('aft_hist')}"></div>
+        ${cell('aft_thumb')}${cell('aft_hist')}</div>
     </div>
     <div class="hint">Histogram: banding shows as a comb (spikes with gaps). After debanding the
       gaps fill in and gradients read smooth. Adjust Deband strength and re-open to compare.</div>`;
@@ -540,6 +558,46 @@ async function saveOne(patch){ const cur=await j("/api/settings"); SETTINGS={...
 const SLV=[["st_crf",v=>v],["st_dither",v=>v],["st_deband_range",v=>v+" px"],["st_target_mbps",v=>v+" Mbps"]];
 SLV.forEach(([id,f])=>{ const el=document.getElementById(id); if(el) el.addEventListener("input",()=>document.getElementById(id+"_v").textContent=f(el.value)); });
 function syncSlv(){ SLV.forEach(([id,f])=>{const el=document.getElementById(id),lab=document.getElementById(id+"_v"); if(el&&lab)lab.textContent=f(el.value);}); }
+
+// ---- "too little / just right / too much" zone guidance for settings sliders ----
+// Each entry: bands = [{to, color, text}] in ascending order of the slider's value.
+const ZONES = {
+  st_crf: {min:0,max:51, bands:[
+    {to:11, color:"#b42318", text:"Excessive — huge files, no visible gain below ~16."},
+    {to:23, color:"#1a7f37", text:"Recommended — visually lossless to very high quality."},
+    {to:28, color:"#c98a00", text:"Acceptable — visible compression on some content."},
+    {to:51, color:"#b42318", text:"Too high — visible quality loss for a delivery master."},
+  ]},
+  st_deband_range: {min:1,max:64, bands:[
+    {to:8,  color:"#c98a00", text:"Narrow — may not fully smooth wide gradients (skies, smoke)."},
+    {to:32, color:"#1a7f37", text:"Recommended — good balance for most footage."},
+    {to:64, color:"#c98a00", text:"Wide — can start softening detail near edges."},
+  ]},
+  st_dither: {min:0,max:20, bands:[
+    {to:0,  color:"#b42318", text:"Off — banding can reappear once this is re-compressed."},
+    {to:4,  color:"#1a7f37", text:"Recommended — subtle, effectively invisible grain."},
+    {to:9,  color:"#c98a00", text:"Visible grain on some content."},
+    {to:20, color:"#b42318", text:"Heavy — visibly grainy/noisy output."},
+  ]},
+};
+function renderZone(id){
+  const cfg=ZONES[id]; const el=document.getElementById(id); if(!cfg||!el) return;
+  const v=+el.value, span=cfg.max-cfg.min||1;
+  let stops=[],pos=0,active=cfg.bands[cfg.bands.length-1];
+  cfg.bands.forEach(b=>{
+    const pct=Math.max(0,Math.min(100,(b.to-cfg.min)/span*100));
+    stops.push(`${b.color} ${pos}% ${pct}%`); pos=pct;
+    if(v<=b.to && active===cfg.bands[cfg.bands.length-1]) active=b;
+  });
+  document.getElementById(id+"_zone").style.background=`linear-gradient(to right,${stops.join(",")})`;
+  const hint=document.getElementById(id+"_hint");
+  if(hint){ hint.textContent=active.text; hint.style.color=active.color; }
+}
+Object.keys(ZONES).forEach(id=>{
+  const el=document.getElementById(id); if(!el) return;
+  el.addEventListener("input",()=>renderZone(id));
+});
+function syncZones(){ Object.keys(ZONES).forEach(renderZone); }
 // init
 j("/api/settings").then(s=>{SETTINGS=s; updateEstimate(); updateCustomRate();});
 
