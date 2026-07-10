@@ -84,7 +84,9 @@ stdlib only. `Start_Here.command` starts it and opens your browser to
 dialog (output folder, suffix, skip/overwrite, CRF, preset, deband range/blur,
 dither, custom threshold — persisted), and **Preview scopes** (source vs
 processed frame + histogram, so you can see the debanding before a full encode).
-Files/folders are chosen with native macOS dialogs. Run directly with:
+Files/folders are chosen with native macOS dialogs, or you can **drag videos
+straight onto the queue** (dropped files are copied in and their output goes to
+your Downloads, or the folder set in Settings). Run directly with:
 ```bash
 python3 server.py
 ```

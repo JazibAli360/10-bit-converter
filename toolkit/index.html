@@ -33,7 +33,8 @@
   button.danger:hover{background:var(--danger-dk);filter:none}
   button.ghost{background:transparent;border:1px solid var(--line)}
   .card{background:var(--card);border:1px solid var(--line);border-radius:12px}
-  .queue{min-height:220px;max-height:44vh;overflow:auto;padding:8px}
+  .queue{min-height:220px;max-height:44vh;overflow:auto;padding:8px;transition:outline .1s}
+  .queue.drop{outline:2px dashed var(--accent);outline-offset:-6px;background:rgba(45,125,210,.07)}
   .empty{color:var(--muted);text-align:center;padding:52px 20px;line-height:1.6}
   .row{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px}
   .row:hover{background:var(--chip)}
@@ -194,8 +195,8 @@ segInit("segRate", v=>{ rate=v; if(v==="Custom") setStatus("Custom bitrate uses 
 
 function renderQueue(items){
   const q=document.getElementById("queue");
-  if(!items.length){ q.innerHTML='<div class="empty">Add files or a whole folder to begin.<br>'
-    +'Each file is converted to <b>NAME_10bit</b> next to the original (or a folder you choose).</div>'; return; }
+  if(!items.length){ q.innerHTML='<div class="empty">Add files, a whole folder, or <b>drag videos here</b>.<br>'
+    +'Each file is converted to <b>NAME_10bit</b> next to the original (dropped files go to your Downloads, or a folder you choose in Settings).</div>'; return; }
   q.innerHTML="";
   items.forEach((it,i)=>{
     const r=document.createElement("div"); r.className="row";
@@ -304,6 +305,27 @@ async function openScopes(){
     <div class="hint">Histogram: banding shows as a comb (spikes with gaps). After debanding the
       gaps fill in and gradients read smooth. Adjust Deband strength and re-open to compare.</div>`;
 }
+
+// ---- drag & drop ----
+const qEl=document.getElementById("queue");
+qEl.addEventListener("dragover",e=>{e.preventDefault();qEl.classList.add("drop");});
+qEl.addEventListener("dragleave",e=>{ if(!qEl.contains(e.relatedTarget)) qEl.classList.remove("drop"); });
+qEl.addEventListener("drop",async e=>{
+  e.preventDefault(); qEl.classList.remove("drop");
+  if(running) return;
+  const files=[...(e.dataTransfer?.files||[])].filter(f=>/\.(mp4|mov|mkv|avi|m4v|webm|mpg|mpeg|ts)$/i.test(f.name));
+  if(!files.length){ setStatus("Drop video files (mp4, mov, mkv…)."); return; }
+  let n=0;
+  for(const f of files){
+    setStatus(`Uploading ${f.name} (${n+1}/${files.length})…`);
+    try{
+      const it=await (await fetch(API+"/api/upload?name="+encodeURIComponent(f.name),{method:"POST",body:f})).json();
+      if(it.path && !queue.some(q=>q.path===it.path)){ queue.push({...it,status:"Queued",pct:""}); n++; }
+    }catch(err){ setStatus("Upload failed: "+f.name); }
+  }
+  renderQueue(queue); refreshConvert();
+  setStatus(`${queue.length} file(s) queued. Dropped files convert into your Downloads folder.`);
+});
 
 renderQueue(queue);
 </script>

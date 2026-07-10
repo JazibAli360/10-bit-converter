@@ -34,6 +34,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 HOST, PORT = "127.0.0.1", 8766
+INTAKE_DIR = tempfile.mkdtemp(prefix="10bit_intake_")  # dropped/uploaded files land here
 VIDEO_EXTS = (".mp4", ".mov", ".mkv", ".avi", ".m4v", ".webm", ".mpg", ".mpeg", ".ts")
 STRENGTH_THR = {"Low": "0.01", "Medium": "0.02", "High": "0.05", "Custom": None}
 X265_PRESETS = ["ultrafast", "superfast", "veryfast", "faster", "fast",
@@ -132,7 +133,13 @@ def probe_pix_fmt(path):
 def make_output_path(in_path, is_prores, dest_dir, suffix):
     base = os.path.splitext(os.path.basename(in_path))[0]
     ext = "mov" if is_prores else "mp4"
-    directory = dest_dir if dest_dir else os.path.dirname(in_path)
+    if dest_dir:
+        directory = dest_dir
+    elif in_path.startswith(INTAKE_DIR):
+        # Dropped/uploaded file has no real source folder -> deliver to Downloads.
+        directory = os.path.expanduser("~/Downloads")
+    else:
+        directory = os.path.dirname(in_path)
     return os.path.join(directory, f"{base}{suffix}.{ext}")
 
 
@@ -440,6 +447,32 @@ class Handler(BaseHTTPRequestHandler):
         elif u.path == "/api/pick-folder":
             paths = pick_folder()
             self._send(200, [{"path": p, "name": os.path.basename(p)} for p in paths])
+        elif u.path == "/api/upload":
+            q = urllib.parse.parse_qs(u.query)
+            name = os.path.basename(q.get("name", ["dropped"])[0]) or "dropped"
+            if not name.lower().endswith(VIDEO_EXTS):
+                self._send(400, {"error": "not a video"})
+                return
+            dest = os.path.join(INTAKE_DIR, name)
+            stem, ext = os.path.splitext(name)
+            i = 1
+            while os.path.exists(dest):
+                dest = os.path.join(INTAKE_DIR, f"{stem}_{i}{ext}")
+                i += 1
+            n = int(self.headers.get("Content-Length", 0))
+            try:
+                with open(dest, "wb") as f:
+                    left = n
+                    while left > 0:
+                        chunk = self.rfile.read(min(1 << 20, left))
+                        if not chunk:
+                            break
+                        f.write(chunk)
+                        left -= len(chunk)
+            except Exception as e:
+                self._send(500, {"error": str(e)})
+                return
+            self._send(200, {"path": dest, "name": os.path.basename(dest)})
         elif u.path == "/api/settings":
             self._send(200, save_settings(self._read_json()))
         elif u.path == "/api/convert":
