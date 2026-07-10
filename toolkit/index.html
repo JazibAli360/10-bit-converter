@@ -296,6 +296,17 @@
   <div class="set-actions"><button class="ghost" onclick="closeModal('mReport')">Close</button></div>
 </div></div>
 
+<div class="modal" id="mOverwrite"><div class="sheet">
+  <h2>Overwrite existing files?</h2>
+  <p class="hint">Settings is set to <b>overwrite</b> if the output already exists.
+    This will replace <span id="ovwCount"></span>:</p>
+  <div id="ovwList" style="max-height:220px;overflow:auto;font-size:13px;line-height:1.8"></div>
+  <div class="set-actions">
+    <button class="ghost" onclick="ovwResolve(false)">Cancel</button>
+    <button class="danger" style="padding:9px 22px" onclick="ovwResolve(true)">Overwrite and convert</button>
+  </div>
+</div></div>
+
 <div class="modal" id="mCompare"><div class="sheet">
   <h2 id="cmpTitle">Compare</h2>
   <div class="row-inline" style="margin-bottom:8px">
@@ -471,8 +482,33 @@ function removeSel(){
 function clearQueue(){ queue=[]; renderQueue(queue); refreshConvert(); setStatus("Queue cleared."); }
 function refreshConvert(){ document.getElementById("btnConvert").disabled = running || !queue.length; updateEstimate(); if(rate==="Custom") drawZones(); }
 
+// ---- confirm-before-overwrite ----
+let _ovwResolveFn=null;
+function confirmOverwrite(names){
+  document.getElementById("ovwCount").textContent = names.length===1? "1 file" : `${names.length} files`;
+  document.getElementById("ovwList").innerHTML = names.map(n=>`<div>• ${n.replace(/</g,"&lt;")}</div>`).join("");
+  document.getElementById("mOverwrite").classList.add("on");
+  return new Promise(resolve=>{ _ovwResolveFn=resolve; });
+}
+function ovwResolve(result){
+  closeModal("mOverwrite");
+  if(_ovwResolveFn){ _ovwResolveFn(result); _ovwResolveFn=null; }
+}
+
 async function convert(){
   if(!queue.length) return;
+  const cur=await j("/api/settings");
+  if(cur.on_exists==="overwrite"){
+    const chk=await j("/api/check-overwrites",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({items:queue,mode})});
+    if(chk.existing && chk.existing.length){
+      const ok=await confirmOverwrite(chk.existing);
+      if(!ok){ setStatus("Convert cancelled — existing outputs left untouched."); return; }
+    }
+  }
+  await startConvert();
+}
+async function startConvert(){
   const r=await j("/api/convert",{method:"POST",headers:{"Content-Type":"application/json"},
     body:JSON.stringify({items:queue,mode,strength,rate})});
   if(r.error){ setStatus("Error: "+r.error); return; }

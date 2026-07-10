@@ -1053,6 +1053,21 @@ class Handler(BaseHTTPRequestHandler):
             presets = [p for p in load_custom_presets() if p.get("name") != name]
             save_custom_presets(presets)
             self._send(200, {"ok": True, "presets": presets})
+        elif u.path == "/api/check-overwrites":
+            data = self._read_json()
+            settings = load_settings()
+            is_prores = data.get("mode", "HEVC").startswith("ProRes")
+            dest_dir = settings["dest_dir"] if settings["dest_mode"] == "custom" else ""
+            suffix = settings["suffix"] or "_10bit"
+            existing = []
+            for it in data.get("items", []):
+                path = it.get("path")
+                if not path:
+                    continue
+                out = make_output_path(path, is_prores, dest_dir, suffix)
+                if os.path.exists(out):
+                    existing.append(it.get("name", os.path.basename(path)))
+            self._send(200, {"existing": existing})
         elif u.path == "/api/convert":
             data = self._read_json()
             items = [{"path": it["path"], "name": it.get("name", os.path.basename(it["path"])),
