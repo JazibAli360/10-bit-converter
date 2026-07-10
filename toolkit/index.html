@@ -191,6 +191,8 @@
   <div id="estimate" class="statusbar" style="margin:6px 0 2px"></div>
   <div class="actions">
     <button class="primary" id="btnConvert" onclick="convert()" disabled>Convert</button>
+    <button class="ghost" id="btnStopAfter" onclick="stopAfterCurrent()" disabled
+      title="Finish the file in progress, then stop — no partial output">Stop after current</button>
     <button class="danger" id="btnCancel" onclick="cancel()" disabled>Cancel</button>
   </div>
   <div class="statusbar" id="status">Add files or a folder to begin.</div>
@@ -478,9 +480,15 @@ async function convert(){
 }
 async function cancel(){ await fetch(API+"/api/cancel",{method:"POST"}); setStatus("Cancelling…");
   document.getElementById("btnCancel").disabled=true; }
+async function stopAfterCurrent(){
+  await fetch(API+"/api/stop-after-current",{method:"POST"});
+  setStatus("Will stop after the current file finishes…");
+  document.getElementById("btnStopAfter").disabled=true;
+}
 function setControls(){
   document.getElementById("btnConvert").disabled = running || !queue.length;
   document.getElementById("btnCancel").disabled = !running;
+  document.getElementById("btnStopAfter").disabled = !running;
 }
 async function poll(){
   const s=await j("/api/status");

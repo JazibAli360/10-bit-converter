@@ -457,7 +457,8 @@ class Job:
 
     def reset(self):
         self.running = False
-        self.cancel = threading.Event()
+        self.cancel = threading.Event()      # instant: kills the current ffmpeg process
+        self.stop_after = threading.Event()  # graceful: finishes the current file, then halts
         self.items = []          # [{path,name,status,pct}]
         self.now = {"file": "—", "pct": 0, "frame": "", "fps": "", "speed": "", "eta": "--:--"}
         self.summary = None
@@ -626,6 +627,7 @@ def run_batch(items, mode, strength, rate, settings):
     total = len(items)
     done = failed = skipped = 0
     last_output = None
+    stopped_after_current = False
     with JOB.lock:
         JOB.total = total
         JOB.started = time.time()
@@ -633,6 +635,16 @@ def run_batch(items, mode, strength, rate, settings):
     try:
         for idx, it in enumerate(items, start=1):
             if JOB.cancel.is_set():
+                break
+            if JOB.stop_after.is_set():
+                # Graceful stop: the previous file (if any) already finished
+                # normally; don't start another one. Mark the rest Skipped so
+                # the queue reflects what actually happened.
+                stopped_after_current = True
+                remaining = len(items) - (idx - 1)
+                skipped += remaining
+                for j in range(idx - 1, len(items)):
+                    _set_item(j, status="Skipped", pct="—")
                 break
             try:
                 with JOB.lock:
@@ -750,6 +762,8 @@ def run_batch(items, mode, strength, rate, settings):
             parts.append(f"{failed} failed")
         if cancelled:
             parts.append("cancelled")
+        elif stopped_after_current:
+            parts.append("stopped after current file")
         summary = "Finished: " + ", ".join(parts) + "."
         started_at = JOB.started
         with JOB.lock:
@@ -1073,6 +1087,9 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, {"folder": folder})
         elif u.path == "/api/cancel":
             JOB.cancel.set()
+            self._send(200, {"ok": True})
+        elif u.path == "/api/stop-after-current":
+            JOB.stop_after.set()
             self._send(200, {"ok": True})
         elif u.path == "/api/reveal":
             path = self._read_json().get("path")
