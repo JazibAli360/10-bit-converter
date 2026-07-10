@@ -399,6 +399,22 @@ def osascript(script):
         return ""
 
 
+def _as_str(s):
+    """Escape a string for embedding in an AppleScript double-quoted literal."""
+    return s.replace("\\", "\\\\").replace('"', '\\"')
+
+
+def notify_completion(title, message):
+    """macOS notification + sound when a batch finishes — fires server-side so
+    it works even if the browser tab isn't focused (or is closed/backgrounded)."""
+    script = (f'display notification "{_as_str(message)}" with title "{_as_str(title)}" '
+              f'sound name "Glass"')
+    try:
+        subprocess.run(["osascript", "-e", script], capture_output=True, timeout=5)
+    except Exception:
+        pass
+
+
 def pick_files():
     script = (
         'set out to ""\n'
@@ -685,12 +701,16 @@ def run_batch(items, mode, strength, rate, settings):
             parts.append(f"{failed} failed")
         if cancelled:
             parts.append("cancelled")
+        summary = "Finished: " + ", ".join(parts) + "."
         with JOB.lock:
             JOB.running = False
-            JOB.summary = "Finished: " + ", ".join(parts) + "."
+            JOB.summary = summary
             JOB.now = {"file": "—", "pct": 0, "frame": "", "fps": "", "speed": "", "eta": "--:--"}
         if last_output and not cancelled:
             subprocess.run(["open", "-R", last_output])
+        if items and not cancelled:
+            noun = "file" if len(items) == 1 else "files"
+            notify_completion("8-bit → 10-bit Converter", f"{summary} ({len(items)} {noun} in batch)")
 
 
 def _set_item(i, **kw):
