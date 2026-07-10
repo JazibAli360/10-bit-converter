@@ -109,6 +109,13 @@
         <button data-v="Custom">Custom</button>
       </span>
     </div>
+    <div><label>Bitrate</label>
+      <span class="seg" id="segRate">
+        <button data-v="Match source" class="on">Match source</button>
+        <button data-v="Quality (CRF)">Quality</button>
+        <button data-v="Custom">Custom</button>
+      </span>
+    </div>
   </div>
 
   <div class="card now">
@@ -139,8 +146,9 @@
     <label>If output exists</label>
     <select id="st_on_exists"><option value="skip">Skip</option>
       <option value="overwrite">Overwrite</option></select>
-    <h3>Quality (HEVC only)</h3>
-    <label>CRF (lower = better)</label><input type="number" id="st_crf" min="0" max="51">
+    <h3>Bitrate / quality (HEVC only)</h3>
+    <label>Target for Custom (Mbps)</label><input type="number" id="st_target_mbps" min="1" max="200" step="0.5">
+    <label>CRF (Quality mode)</label><input type="number" id="st_crf" min="0" max="51">
     <label>Encoder preset</label><select id="st_preset"></select>
     <h3>Deband &amp; dither</h3>
     <label>Deband range</label><input type="number" id="st_deband_range" min="1" max="64">
@@ -148,6 +156,8 @@
     <select id="st_deband_blur"><option value="true">On</option><option value="false">Off</option></select>
     <label>Dither amount</label><input type="number" id="st_dither" min="0" max="20">
     <label>Custom threshold</label><input type="text" id="st_thr_custom">
+    <label>Deflicker</label>
+    <select id="st_deflicker"><option value="false">Off</option><option value="true">On (luminance flicker)</option></select>
   </div>
   <div class="set-actions">
     <button class="ghost" onclick="closeModal('mSettings')">Cancel</button>
@@ -167,6 +177,7 @@ let queue = [];            // [{path,name,status,pct}]
 let running = false;
 let mode = "HEVC (smaller, delivery)";
 let strength = "Medium";
+let rate = "Match source";
 
 function j(url, opts){ return fetch(API+url, opts).then(r=>r.json()); }
 function setStatus(t){ document.getElementById("status").textContent = t; }
@@ -179,6 +190,7 @@ function segInit(id, cb){
 }
 segInit("segMode", v=>mode=v);
 segInit("segStr", v=>strength=v);
+segInit("segRate", v=>{ rate=v; if(v==="Custom") setStatus("Custom bitrate uses the target Mbps in Settings."); });
 
 function renderQueue(items){
   const q=document.getElementById("queue");
@@ -214,7 +226,7 @@ function refreshConvert(){ document.getElementById("btnConvert").disabled = runn
 async function convert(){
   if(!queue.length) return;
   const r=await j("/api/convert",{method:"POST",headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({items:queue,mode,strength})});
+    body:JSON.stringify({items:queue,mode,strength,rate})});
   if(r.error){ setStatus("Error: "+r.error); return; }
   running=true; setControls(); poll();
 }
@@ -250,6 +262,7 @@ async function openSettings(){
   st_on_exists.value=s.on_exists; st_crf.value=s.crf; st_preset.value=s.preset;
   st_deband_range.value=s.deband_range; st_deband_blur.value=String(s.deband_blur);
   st_dither.value=s.dither; st_thr_custom.value=s.thr_custom;
+  st_target_mbps.value=s.target_mbps; st_deflicker.value=String(s.deflicker);
   document.getElementById("mSettings").classList.add("on");
 }
 async function pickDest(){
@@ -262,7 +275,8 @@ async function saveSettings(){
     suffix:st_suffix.value.trim()||"_10bit",on_exists:st_on_exists.value,
     crf:+st_crf.value,preset:st_preset.value,deband_range:+st_deband_range.value,
     deband_blur:st_deband_blur.value==="true",dither:+st_dither.value,
-    thr_custom:st_thr_custom.value.trim()||"0.03"};
+    thr_custom:st_thr_custom.value.trim()||"0.03",
+    target_mbps:+st_target_mbps.value||12,deflicker:st_deflicker.value==="true"};
   if(body.dest_mode==="custom" && !body.dest_dir){ alert("Choose an output folder, or switch back to “Next to each source”."); return; }
   await j("/api/settings",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
   closeModal("mSettings"); setStatus("Settings saved.");

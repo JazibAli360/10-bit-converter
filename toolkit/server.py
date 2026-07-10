@@ -43,6 +43,8 @@ DEFAULT_SETTINGS = {
     "dest_mode": "same", "dest_dir": "", "suffix": "_10bit", "on_exists": "skip",
     "crf": 18, "preset": "slow", "deband_range": 16, "deband_blur": True,
     "dither": 2, "thr_custom": "0.03",
+    "target_mbps": 12.0,       # used when Bitrate = Custom
+    "deflicker": False,        # ffmpeg deflicker filter (luminance flicker)
 }
 
 
@@ -77,13 +79,14 @@ def save_settings(s):
     return clean
 
 
-def deband_noise_chain(thr, rng=16, blur=True, dither=2):
-    return (f"deband=1thr={thr}:2thr={thr}:3thr={thr}:range={rng}:blur={1 if blur else 0},"
+def deband_noise_chain(thr, rng=16, blur=True, dither=2, deflicker=False):
+    chain = ("deflicker," if deflicker else "")
+    return (chain + f"deband=1thr={thr}:2thr={thr}:3thr={thr}:range={rng}:blur={1 if blur else 0},"
             f"noise=alls={dither}:allf=t+u")
 
 
-def build_filters(thr, pix_fmt, rng=16, blur=True, dither=2):
-    return deband_noise_chain(thr, rng, blur, dither) + f",format={pix_fmt}"
+def build_filters(thr, pix_fmt, rng=16, blur=True, dither=2, deflicker=False):
+    return deband_noise_chain(thr, rng, blur, dither, deflicker) + f",format={pix_fmt}"
 
 
 def probe_duration(path):
@@ -94,6 +97,27 @@ def probe_duration(path):
         return float(out)
     except Exception:
         return 0.0
+
+
+def probe_bitrate_kbps(path):
+    """Source video bitrate in kbps. Tries the video stream, falls back to the
+    container total, then estimates from filesize/duration. 0 if unknown."""
+    for args in (["-select_streams", "v:0", "-show_entries", "stream=bit_rate"],
+                 ["-show_entries", "format=bit_rate"]):
+        try:
+            out = subprocess.run(["ffprobe", "-v", "error", *args, "-of", "csv=p=0", path],
+                                 capture_output=True, text=True, check=True).stdout.strip()
+            if out.isdigit() and int(out) > 0:
+                return int(out) // 1000
+        except Exception:
+            pass
+    try:
+        dur = probe_duration(path)
+        if dur > 0:
+            return int(os.path.getsize(path) * 8 / dur / 1000)
+    except Exception:
+        pass
+    return 0
 
 
 def probe_pix_fmt(path):
@@ -175,7 +199,23 @@ class Job:
 JOB = Job()
 
 
-def run_batch(items, mode, strength, settings):
+def hevc_rate_args(rate, settings, in_path):
+    """Video-rate args for HEVC based on the chosen Bitrate mode."""
+    crf = str(settings["crf"])
+    if rate == "Match source":
+        kbps = probe_bitrate_kbps(in_path)
+        if kbps > 0:
+            return ["-b:v", f"{kbps}k", "-maxrate", f"{int(kbps * 1.45)}k",
+                    "-bufsize", f"{kbps * 2}k"]
+        return ["-crf", crf]   # unknown source bitrate -> fall back to quality
+    if rate == "Custom":
+        kbps = int(float(settings.get("target_mbps", 12.0)) * 1000)
+        return ["-b:v", f"{kbps}k", "-maxrate", f"{int(kbps * 1.45)}k",
+                "-bufsize", f"{kbps * 2}k"]
+    return ["-crf", crf]       # "Quality (CRF)"
+
+
+def run_batch(items, mode, strength, rate, settings):
     thr = STRENGTH_THR.get(strength)
     if thr is None:
         thr = str(settings.get("thr_custom", "0.03"))
@@ -185,7 +225,8 @@ def run_batch(items, mode, strength, settings):
     overwrite = settings["on_exists"] == "overwrite"
     pix_fmt = "yuv444p10le" if is_prores else "yuv420p10le"
     filters = build_filters(thr, pix_fmt, settings["deband_range"],
-                            settings["deband_blur"], settings["dither"])
+                            settings["deband_blur"], settings["dither"],
+                            settings.get("deflicker", False))
     total = len(items)
     done = failed = skipped = 0
     last_output = None
@@ -211,7 +252,8 @@ def run_batch(items, mode, strength, settings):
         else:
             cmd = ["ffmpeg", "-y", "-nostats", "-i", in_path, "-vf", filters,
                    "-c:v", "libx265", "-pix_fmt", "yuv420p10le",
-                   "-crf", str(settings["crf"]), "-preset", str(settings["preset"]),
+                   *hevc_rate_args(rate, settings, in_path),
+                   "-preset", str(settings["preset"]),
                    "-tag:v", "hvc1", "-c:a", "aac", "-b:a", "192k",
                    "-progress", "pipe:1", out_path]
         dur = probe_duration(in_path)
@@ -416,8 +458,8 @@ class Handler(BaseHTTPRequestHandler):
                 JOB.running = True
                 JOB.items = items
             threading.Thread(target=run_batch, args=(items, data.get("mode", "HEVC"),
-                             data.get("strength", "Medium"), load_settings()),
-                             daemon=True).start()
+                             data.get("strength", "Medium"), data.get("rate", "Match source"),
+                             load_settings()), daemon=True).start()
             self._send(200, {"ok": True})
         elif u.path == "/api/cancel":
             JOB.cancel.set()
