@@ -425,6 +425,12 @@ def pick_folder():
             and "_10bit." not in f]
 
 
+def pick_folder_path(prompt="Select a folder to watch"):
+    """Just the folder path (no listing) — for Watch folder, not file pickers."""
+    p = osascript(f'try\nreturn POSIX path of (choose folder with prompt "{prompt}")\nend try')
+    return p if p and os.path.isdir(p) else ""
+
+
 # ------------------------------------------------------------------ conversion job
 class Job:
     def __init__(self):
@@ -457,6 +463,69 @@ class Job:
 
 
 JOB = Job()
+
+# Watch folder: polls a folder for new videos and auto-converts them using
+# whatever mode/strength/rate the user last ran manually (updated in the
+# /api/convert handler). Runs in its own daemon thread, started once in main().
+WATCH = {"enabled": False, "folder": "", "processed": 0}
+LAST_RUN = {"mode": "HEVC (smaller, delivery)", "strength": "Medium", "rate": "Match source"}
+_watch_sizes = {}   # path -> last-seen size, for a simple stability check
+
+
+def watch_tick():
+    """One poll: queue+convert any new, size-stable video in the watched
+    folder whose output doesn't already exist. No-ops if a batch is already
+    running (manual or watch) or watching is off."""
+    if not WATCH["enabled"] or not WATCH["folder"] or JOB.running:
+        return
+    folder = WATCH["folder"]
+    if not os.path.isdir(folder):
+        return
+    settings = load_settings()
+    is_prores = LAST_RUN["mode"].startswith("ProRes")
+    dest_dir = settings["dest_dir"] if settings["dest_mode"] == "custom" else ""
+    suffix = settings["suffix"] or "_10bit"
+    ready = []
+    seen_now = set()
+    for f in sorted(os.listdir(folder)):
+        if not f.lower().endswith(VIDEO_EXTS) or "_10bit." in f or f"{suffix}." in f:
+            continue
+        full = os.path.join(folder, f)
+        if not os.path.isfile(full):
+            continue
+        seen_now.add(full)
+        out = make_output_path(full, is_prores, dest_dir, suffix)
+        if os.path.exists(out):
+            continue  # already converted — safe to re-run the app without reprocessing everything
+        try:
+            size = os.path.getsize(full)
+        except OSError:
+            continue
+        # Require the same size across two consecutive polls before touching a
+        # file — a drag-and-drop copy in progress would still be growing.
+        if _watch_sizes.get(full) == size:
+            ready.append(full)
+        _watch_sizes[full] = size
+    for stale in set(_watch_sizes) - seen_now:
+        del _watch_sizes[stale]
+    if not ready:
+        return
+    items = [{"path": p, "name": os.path.basename(p), "status": "Queued", "pct": ""} for p in ready]
+    with JOB.lock:
+        JOB.reset()
+        JOB.running = True
+        JOB.items = items
+    WATCH["processed"] += len(items)
+    run_batch(items, LAST_RUN["mode"], LAST_RUN["strength"], LAST_RUN["rate"], settings)
+
+
+def watch_loop():
+    while True:
+        try:
+            watch_tick()
+        except Exception:
+            pass
+        time.sleep(3)
 
 
 def hevc_rate_args(rate, settings, in_path):
@@ -818,6 +887,8 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, load_settings())
         elif u.path == "/api/presets":
             self._send(200, load_custom_presets())
+        elif u.path == "/api/watch":
+            self._send(200, dict(WATCH))
         elif u.path in ("/api/scope", "/api/compare-image", "/api/filmstrip-image"):
             q = urllib.parse.parse_qs(u.query)
             token = q.get("token", [""])[0]
@@ -908,10 +979,23 @@ class Handler(BaseHTTPRequestHandler):
                 JOB.reset()
                 JOB.running = True
                 JOB.items = items
-            threading.Thread(target=run_batch, args=(items, data.get("mode", "HEVC"),
-                             data.get("strength", "Medium"), data.get("rate", "Match source"),
+            mode = data.get("mode", "HEVC"); strength = data.get("strength", "Medium")
+            rate = data.get("rate", "Match source")
+            LAST_RUN["mode"], LAST_RUN["strength"], LAST_RUN["rate"] = mode, strength, rate
+            threading.Thread(target=run_batch, args=(items, mode, strength, rate,
                              load_settings()), daemon=True).start()
             self._send(200, {"ok": True})
+        elif u.path == "/api/watch":
+            data = self._read_json()
+            if "enabled" in data:
+                WATCH["enabled"] = bool(data["enabled"])
+            if "folder" in data:
+                WATCH["folder"] = data["folder"] or ""
+                _watch_sizes.clear()
+            self._send(200, dict(WATCH))
+        elif u.path == "/api/watch/pick-folder":
+            folder = pick_folder_path()
+            self._send(200, {"folder": folder})
         elif u.path == "/api/cancel":
             JOB.cancel.set()
             self._send(200, {"ok": True})
@@ -977,6 +1061,7 @@ def main():
     atexit.register(cleanup_temp)
     if not shutil.which("ffmpeg"):
         print("WARNING: ffmpeg not found (bundle missing and none on PATH).")
+    threading.Thread(target=watch_loop, daemon=True).start()
 
     # Bind the first free port from PORT upward (survives a stale/second instance).
     srv = None

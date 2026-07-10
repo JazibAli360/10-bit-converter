@@ -113,6 +113,7 @@
     <span class="spacer"></span>
     <button class="ghost" onclick="openScopes()">📊 Preview scopes</button>
     <button class="ghost" onclick="checkBanding()">🔍 Check banding</button>
+    <button class="ghost" id="watchBtn" onclick="toggleWatchPanel()">👁 Watch folder</button>
     <button class="ghost" onclick="openSettings()">⚙ Settings</button>
     <button class="ghost" onclick="document.getElementById('mHelp').classList.add('on')" title="What this does">? Help</button>
   </div>
@@ -124,6 +125,19 @@
     <button class="ghost" onclick="applyPreset('preserve')" title="HEVC · Match source · 16-bit · copy audio">Max preservation</button>
     <span id="customPresets" style="display:contents"></span>
     <button class="ghost" onclick="saveCustomPreset()">＋ Save current as preset…</button>
+  </div>
+
+  <div class="card" id="watchPanel" style="display:none;padding:12px 14px;margin:10px 0">
+    <div class="row-inline">
+      <b>Watch folder</b>
+      <span class="hint" style="margin:0">New videos dropped into this folder are converted automatically, using whatever Format/Deband/Bitrate you last ran manually.</span>
+    </div>
+    <div class="row-inline" style="margin-top:8px">
+      <input type="text" id="watchFolder" placeholder="No folder chosen" readonly style="flex:1;background:var(--bg);border:1px solid var(--line);border-radius:7px;padding:7px 9px;color:var(--ink)">
+      <button class="ghost" onclick="pickWatchFolder()">Choose…</button>
+      <button class="ghost" id="watchToggleBtn" onclick="toggleWatching()">Start watching</button>
+    </div>
+    <div class="hint" id="watchStatus" style="margin-top:6px">Not watching.</div>
   </div>
 
   <div id="bandingBanner" style="display:none"></div>
@@ -481,6 +495,51 @@ async function saveSettings(){
   closeModal("mSettings"); setStatus("Settings saved.");
 }
 function closeModal(id){ document.getElementById(id).classList.remove("on"); }
+
+// ---- watch folder ----
+let watchPoll=null;
+function toggleWatchPanel(){
+  const p=document.getElementById("watchPanel");
+  const on = p.style.display==="none";
+  p.style.display = on? "block":"none";
+  if(on) refreshWatchStatus();
+}
+async function pickWatchFolder(){
+  const r=await j("/api/watch/pick-folder",{method:"POST"});
+  if(r.folder){
+    document.getElementById("watchFolder").value=r.folder;
+    await j("/api/watch",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({folder:r.folder})});
+  }
+}
+async function toggleWatching(){
+  const cur=await j("/api/watch");
+  if(cur.enabled){
+    await j("/api/watch",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({enabled:false})});
+  } else {
+    if(!document.getElementById("watchFolder").value){ setStatus("Choose a folder to watch first."); return; }
+    await j("/api/watch",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({enabled:true})});
+    if(watchPoll) clearInterval(watchPoll);
+    watchPoll=setInterval(refreshWatchStatus,2000);
+  }
+  refreshWatchStatus();
+}
+async function refreshWatchStatus(){
+  const w=await j("/api/watch");
+  document.getElementById("watchFolder").value=w.folder||"";
+  document.getElementById("watchToggleBtn").textContent = w.enabled? "Stop watching" : "Start watching";
+  document.getElementById("watchBtn").textContent = w.enabled? "👁 Watching…" : "👁 Watch folder";
+  document.getElementById("watchStatus").textContent = w.enabled
+    ? `Watching "${w.folder}" — ${w.processed} file(s) auto-converted so far. Checks every few seconds.`
+    : "Not watching.";
+  if(w.enabled && !watchPoll) watchPoll=setInterval(refreshWatchStatus,2000);
+  if(!w.enabled && watchPoll){ clearInterval(watchPoll); watchPoll=null; }
+  if(w.enabled && !running){
+    // pick up any auto-conversion the watch loop kicked off, so the queue/now-running reflect it
+    const s=await j("/api/status");
+    if(s.running){ running=true; if(s.items?.length){queue=s.items; renderQueue(queue);} poll(); }
+  }
+}
+j("/api/watch").then(w=>{ if(w.enabled) refreshWatchStatus(); });
 
 // ---- banding meter ----
 async function checkBanding(){
