@@ -79,8 +79,8 @@ stdlib only. `Start_Here.command` starts it and opens your browser to
 `http://127.0.0.1:8766`. It has a **queue** (each row shows status + live %),
 **Format** (HEVC / ProRes 4444), **Deband** (Low/Medium/High/Custom), and
 **Bitrate** (Match source / Quality / Custom Mbps) controls, optional
-**Deflicker** and **Max quality (16-bit)** passes (Settings), a **live "Now
-running"** readout (%, frame, fps, speed, ETA), **audio stream-copy** by default
+**Deflicker**, **Max quality (16-bit)**, **Denoise**, and **two-pass** passes
+(Settings), a **live "Now running"** readout (%, frame, fps, speed, ETA), **audio stream-copy** by default
 (no needless re-encode) with source **colour-tag passthrough**, an **auto 10-bit
 verify** shown on each finished row (confirmed pix_fmt · bitrate · size), an
 **A/B before–after compare** (drag-to-wipe on the same frame), a

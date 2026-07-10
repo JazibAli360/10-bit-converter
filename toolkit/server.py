@@ -49,7 +49,11 @@ DEFAULT_SETTINGS = {
     "deflicker": False,        # ffmpeg deflicker filter (luminance flicker)
     "max_quality": False,      # process deband/dither at 16-bit for cleaner gradients
     "audio": "copy",           # "copy" (lossless, no re-encode) or "aac"
+    "denoise": "off",          # "off" | "light" | "medium" (hqdn3d; softens slightly)
+    "two_pass": False,         # 2-pass HEVC for accurate target bitrate (Match/Custom)
 }
+
+DENOISE_FILTER = {"light": "hqdn3d=2:1:2:3", "medium": "hqdn3d=4:3:6:6"}
 
 MP4_COPY_AUDIO = {"aac", "mp3", "ac3", "eac3"}   # codecs safe to stream-copy into .mp4
 
@@ -85,8 +89,11 @@ def save_settings(s):
     return clean
 
 
-def deband_noise_chain(thr, rng=16, blur=True, dither=2, deflicker=False, max_quality=False):
+def deband_noise_chain(thr, rng=16, blur=True, dither=2, deflicker=False, max_quality=False,
+                       denoise="off"):
     chain = ""
+    if denoise in DENOISE_FILTER:
+        chain += DENOISE_FILTER[denoise] + ","
     if deflicker:
         chain += "deflicker,"
     if max_quality:
@@ -98,8 +105,10 @@ def deband_noise_chain(thr, rng=16, blur=True, dither=2, deflicker=False, max_qu
             f"noise=alls={dither}:allf=t+u")
 
 
-def build_filters(thr, pix_fmt, rng=16, blur=True, dither=2, deflicker=False, max_quality=False):
-    return deband_noise_chain(thr, rng, blur, dither, deflicker, max_quality) + f",format={pix_fmt}"
+def build_filters(thr, pix_fmt, rng=16, blur=True, dither=2, deflicker=False, max_quality=False,
+                  denoise="off"):
+    return (deband_noise_chain(thr, rng, blur, dither, deflicker, max_quality, denoise)
+            + f",format={pix_fmt}")
 
 
 def probe_duration(path):
@@ -368,7 +377,8 @@ def run_batch(items, mode, strength, rate, settings):
     filters = build_filters(thr, pix_fmt, settings["deband_range"],
                             settings["deband_blur"], settings["dither"],
                             settings.get("deflicker", False),
-                            settings.get("max_quality", False))
+                            settings.get("max_quality", False),
+                            settings.get("denoise", "off"))
     total = len(items)
     done = failed = skipped = 0
     last_output = None
@@ -394,24 +404,49 @@ def run_batch(items, mode, strength, rate, settings):
             continue
         aud = audio_args(in_path, is_prores, settings.get("audio", "copy"))
         col = color_args(in_path)
+        pre_cmd = None
         if is_prores:
             cmd = ["ffmpeg", "-y", "-nostats", "-i", in_path, "-vf", filters,
                    "-c:v", "prores_ks", "-profile:v", "4444", "-pix_fmt", "yuv444p10le",
                    *(["-c:a", "pcm_s16le"] if aud == ["-an"] else aud), *col,
                    "-progress", "pipe:1", out_path]
         else:
-            cmd = ["ffmpeg", "-y", "-nostats", "-i", in_path, "-vf", filters,
-                   "-c:v", "libx265", "-pix_fmt", "yuv420p10le",
-                   *hevc_rate_args(rate, settings, in_path),
-                   "-preset", str(settings["preset"]), "-tag:v", "hvc1",
-                   *aud, *col, "-progress", "pipe:1", out_path]
+            rate_args = hevc_rate_args(rate, settings, in_path)
+            base = ["ffmpeg", "-y", "-nostats", "-i", in_path, "-vf", filters,
+                    "-c:v", "libx265", "-pix_fmt", "yuv420p10le", *rate_args,
+                    "-preset", str(settings["preset"])]
+            # Two-pass only makes sense with a bitrate target (not CRF).
+            two_pass = bool(settings.get("two_pass")) and "-b:v" in rate_args
+            if two_pass:
+                stats = os.path.join(INTAKE_DIR, f"2pass_{idx}.log")
+                pre_cmd = [*base, "-x265-params", f"pass=1:stats={stats}", "-an",
+                           "-f", "null", "-progress", "pipe:1", os.devnull]
+                cmd = [*base, "-x265-params", f"pass=2:stats={stats}", "-tag:v", "hvc1",
+                       *aud, *col, "-progress", "pipe:1", out_path]
+            else:
+                cmd = [*base, "-tag:v", "hvc1", *aud, *col, "-progress", "pipe:1", out_path]
         src_bits = pixfmt_bits(probe_pix_fmt(in_path))
         dur = probe_duration(in_path)
+        name = it["name"]
         _set_item(idx - 1, status="Running", pct="0%")
-        with JOB.lock:
-            JOB.now = {"file": f"[{idx}/{total}]  {it['name']}", "pct": 0,
-                       "frame": "", "fps": "", "speed": "", "eta": "--:--"}
-        err = _run_ffmpeg(cmd, dur, idx - 1)
+
+        # Pass 1 (two-pass only): analysis pass, discarded output.
+        if pre_cmd is not None:
+            with JOB.lock:
+                JOB.now = {"file": f"[{idx}/{total}]  {name} — pass 1/2 (analyzing)",
+                           "pct": 0, "frame": "", "fps": "", "speed": "", "eta": "--:--"}
+            e1 = _run_ffmpeg(pre_cmd, dur, idx - 1)
+            if not JOB.cancel.is_set() and e1 is not None:
+                failed += 1
+                _set_item(idx - 1, status="Failed", pct="—", error=e1)
+                continue
+
+        err = None
+        if not JOB.cancel.is_set():
+            with JOB.lock:
+                JOB.now = {"file": f"[{idx}/{total}]  {name}" + (" — pass 2/2" if pre_cmd else ""),
+                           "pct": 0, "frame": "", "fps": "", "speed": "", "eta": "--:--"}
+            err = _run_ffmpeg(cmd, dur, idx - 1)
         if JOB.cancel.is_set():
             try:
                 if os.path.exists(out_path):
@@ -515,7 +550,7 @@ def render_scopes(in_path, strength, settings):
     thr = STRENGTH_THR.get(strength) or str(settings.get("thr_custom", "0.03"))
     chain = deband_noise_chain(thr, settings["deband_range"], settings["deband_blur"],
                                settings["dither"], settings.get("deflicker", False),
-                               settings.get("max_quality", False))
+                               settings.get("max_quality", False), settings.get("denoise", "off"))
     outdir = tempfile.mkdtemp(prefix="scopes_")
     dur = probe_duration(in_path)
     t = max(0.0, dur * 0.4) if dur else 1.0

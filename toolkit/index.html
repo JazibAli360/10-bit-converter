@@ -203,6 +203,10 @@
     <select id="st_deflicker"><option value="false">Off</option><option value="true">On (luminance flicker)</option></select>
     <label>Max quality (16-bit)</label>
     <select id="st_max_quality"><option value="false">Off (faster)</option><option value="true">On (cleaner gradients, slower)</option></select>
+    <label>Denoise</label>
+    <select id="st_denoise"><option value="off">Off</option><option value="light">Light (softens slightly)</option><option value="medium">Medium (softens more)</option></select>
+    <label>Two-pass encode</label>
+    <select id="st_two_pass"><option value="false">Off</option><option value="true">On (accurate bitrate, ~2× time)</option></select>
   </div>
   <div class="set-actions">
     <button class="ghost" onclick="closeModal('mSettings')">Cancel</button>
@@ -375,6 +379,7 @@ async function openSettings(){
   st_dither.value=s.dither; st_thr_custom.value=s.thr_custom;
   st_target_mbps.value=s.target_mbps; st_deflicker.value=String(s.deflicker);
   st_max_quality.value=String(s.max_quality);
+  st_denoise.value=s.denoise||"off"; st_two_pass.value=String(s.two_pass);
   syncSlv();
   document.getElementById("mSettings").classList.add("on");
 }
@@ -390,7 +395,7 @@ async function saveSettings(){
     deband_blur:st_deband_blur.value==="true",dither:+st_dither.value,
     thr_custom:st_thr_custom.value.trim()||"0.03",
     target_mbps:+st_target_mbps.value||12,deflicker:st_deflicker.value==="true",
-    max_quality:st_max_quality.value==="true"};
+    max_quality:st_max_quality.value==="true",denoise:st_denoise.value,two_pass:st_two_pass.value==="true"};
   if(body.dest_mode==="custom" && !body.dest_dir){ alert("Choose an output folder, or switch back to “Next to each source”."); return; }
   await j("/api/settings",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
   SETTINGS=body; updateEstimate(); updateCustomRate();
