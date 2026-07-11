@@ -42,6 +42,8 @@
   .empty{color:var(--muted);text-align:center;padding:52px 20px;line-height:1.6}
   .row{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px}
   .row:hover{background:var(--chip)}
+  .row .row-actions{display:flex;gap:4px;opacity:0;transition:opacity .1s;flex-shrink:0}
+  .row:hover .row-actions{opacity:1}
   .drag-handle{cursor:grab;color:var(--muted);font-size:15px;user-select:none;width:14px;text-align:center}
   .row.dragging{opacity:.4}
   .row.drag-over{box-shadow:inset 0 2px 0 var(--accent)}
@@ -537,8 +539,12 @@ function renderQueue(items){
       <input type="checkbox" data-i="${i}" ${running?'disabled':''}>
       <span class="name-wrap"><span class="name" title="${srcInfo.replace(/"/g,'&quot;')}">${it.name}</span>
         ${it.info?`<span class="info">${it.info}</span>`:''}</span>
-      ${(st==='Done'&&it.out)?`<button class="mini" data-cmp="${i}">Compare</button><button class="mini" data-rev="${i}">Reveal</button>`:''}
-      ${(st==='Failed'&&it.error)?`<button class="mini" data-err="${i}">why?</button>`:''}
+      <span class="row-actions">
+        <button class="mini" data-scopes="${i}" title="Preview scopes">Scopes</button>
+        <button class="mini" data-band="${i}" title="Check banding">Band</button>
+        ${(st==='Done'&&it.out)?`<button class="mini" data-cmp="${i}">Compare</button><button class="mini" data-rev="${i}">Reveal</button>`:''}
+        ${(st==='Failed'&&it.error)?`<button class="mini" data-err="${i}">why?</button>`:''}
+      </span>
       <span class="status s-${st}">${st}</span>
       <span class="pct">${it.pct||""}</span>`;
     q.appendChild(r);
@@ -781,9 +787,11 @@ async function refreshWatchStatus(){
 j("/api/watch").then(w=>{ if(w.enabled) refreshWatchStatus(); });
 
 // ---- banding meter ----
-async function checkBanding(){
-  const sel=[...document.querySelectorAll("#queue input:checked")].map(c=>+c.dataset.i);
-  const target = sel.length? queue[sel[0]] : queue[0];
+async function checkBanding(i){
+  let target;
+  if(i!=null) target=queue[i];
+  else { const sel=[...document.querySelectorAll("#queue input:checked")].map(c=>+c.dataset.i);
+    target = sel.length? queue[sel[0]] : queue[0]; }
   const banner=document.getElementById("bandingBanner");
   if(!target){ setStatus("Add (or tick) a file first, then Check banding."); return; }
   banner.style.display="block"; banner.className="banner banner-moderate";
@@ -799,9 +807,11 @@ async function checkBanding(){
 
 // ---- scopes ----
 let scopesTarget=null;
-async function openScopes(){
-  const sel=[...document.querySelectorAll("#queue input:checked")].map(c=>+c.dataset.i);
-  const target = sel.length? queue[sel[0]] : queue[0];
+async function openScopes(i){
+  let target;
+  if(i!=null) target=queue[i];
+  else { const sel=[...document.querySelectorAll("#queue input:checked")].map(c=>+c.dataset.i);
+    target = sel.length? queue[sel[0]] : queue[0]; }
   if(!target){ setStatus("Add (or tick) a file first, then Preview scopes."); return; }
   scopesTarget=target;
   document.getElementById("scopesTitle").textContent="Scopes — "+target.name;
@@ -920,7 +930,9 @@ const qEl=document.getElementById("queue");
 qEl.addEventListener("click",e=>{
   const c=e.target.closest("[data-cmp]"); if(c){ openCompare(+c.dataset.cmp); return; }
   const er=e.target.closest("[data-err]"); if(er){ showMsg("Conversion failed — "+(queue[+er.dataset.err]?.name||""), queue[+er.dataset.err]?.error||"(no details)"); return; }
-  const rv=e.target.closest("[data-rev]"); if(rv){ const it=queue[+rv.dataset.rev]; if(it?.out) fetch(API+"/api/reveal",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({path:it.out})}); }
+  const rv=e.target.closest("[data-rev]"); if(rv){ const it=queue[+rv.dataset.rev]; if(it?.out) fetch(API+"/api/reveal",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({path:it.out})}); return; }
+  const sc=e.target.closest("[data-scopes]"); if(sc){ openScopes(+sc.dataset.scopes); return; }
+  const bd=e.target.closest("[data-band]"); if(bd){ checkBanding(+bd.dataset.band); return; }
 });
 function showMsg(title,text){ document.getElementById("msgTitle").textContent=title;
   document.getElementById("msgBody").textContent=text; document.getElementById("mMsg").classList.add("on"); }
