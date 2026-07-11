@@ -4,15 +4,19 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>8-bit → 10-bit Converter</title>
+<link id="favicon" rel="icon" type="image/png">
 <style>
   :root{
     --bg:#f4f5f7; --card:#ffffff; --ink:#1a1d21; --muted:#6b7280; --line:#e4e6eb;
     --accent:#2d7dd2; --accent-dk:#1b5fa5; --danger:#d9534f; --danger-dk:#b52b27;
     --ok:#1a7f37; --run:#1f6feb; --warn:#8a6d3b; --chip:#eef1f5;
+    --accent-dim:#e3ebfd; --accent-text:#2452b8; --border-strong:#cdd2da;
+    --mono: ui-monospace, "SF Mono", Menlo, monospace;
   }
   @media (prefers-color-scheme: dark){
     :root{ --bg:#15171b; --card:#1e2127; --ink:#e8eaed; --muted:#9aa0a8; --line:#2c313a;
-      --accent:#4c9aff; --accent-dk:#2d7dd2; --chip:#262b33; --ok:#3fb950; --run:#4c9aff; }
+      --accent:#4c9aff; --accent-dk:#2d7dd2; --chip:#262b33; --ok:#3fb950; --run:#4c9aff;
+      --accent-dim:#274a85; --accent-text:#bcd3ff; --border-strong:#39424f; }
   }
   *{box-sizing:border-box}
   body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
@@ -100,35 +104,96 @@
   .cmp-handle::after{content:'';position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:26px;height:26px;border-radius:50%;background:#fff;box-shadow:0 0 6px rgba(0,0,0,.5)}
   .cmp-tag{position:absolute;top:8px;padding:3px 8px;border-radius:6px;background:rgba(0,0,0,.6);color:#fff;font-size:12px}
   .cmp-tagL{left:8px}.cmp-tagR{right:8px}
+
+  /* --- pill presets --- */
+  .pill{font:inherit;font-size:12.5px;font-weight:500;padding:6px 13px;border-radius:999px;
+    border:1px solid var(--line);background:var(--card);color:var(--muted);cursor:pointer}
+  .pill:hover{border-color:var(--border-strong);color:var(--ink)}
+  .pill.active{background:var(--accent-dim);border-color:var(--accent);color:var(--accent-text);font-weight:600}
+  .pill.ghost-add{border-style:dashed;color:var(--muted)}
+
+  /* --- icon buttons + overflow menu (toolbar) --- */
+  .icon-btn{width:32px;height:32px;padding:0;border-radius:8px;border:1px solid var(--line);
+    background:var(--card);color:var(--muted);display:inline-flex;align-items:center;justify-content:center;
+    cursor:pointer;flex-shrink:0}
+  .icon-btn:hover{border-color:var(--border-strong);color:var(--ink);background:var(--chip)}
+  .icon-btn svg{width:16px;height:16px}
+  .split-btn{display:inline-flex;border-radius:8px;overflow:hidden;border:1px solid var(--accent)}
+  .split-btn button{font:inherit;font-weight:600;font-size:13px;border:0;padding:8px 14px;
+    background:var(--accent);color:#fff;cursor:pointer;display:flex;align-items:center;gap:6px}
+  .split-btn button:hover{filter:brightness(1.08)}
+  .split-btn .chev{padding:8px 8px;border-left:1px solid rgba(255,255,255,.25)}
+  .menu-wrap{position:relative;display:inline-block}
+  .menu{position:absolute;right:0;top:38px;background:var(--card);border:1px solid var(--line);
+    border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.18);min-width:180px;padding:6px;z-index:20}
+  .menu button{width:100%;text-align:left;background:none;border:0;font:inherit;font-size:13px;
+    color:var(--ink);padding:8px 10px;border-radius:6px;cursor:pointer;display:flex;align-items:center;gap:9px}
+  .menu button:hover{background:var(--chip)}
+  .menu button svg{width:15px;height:15px;color:var(--muted);flex-shrink:0}
+
+  /* --- numeric readouts: tabular monospace so columns line up --- */
+  .pct, .now .stats, .now .file, .slv, #batchStats, .row .info, #estimate{
+    font-variant-numeric:tabular-nums}
+  .pct, #batchStats, .row .info{font-family:var(--mono)}
 </style>
 </head>
 <body>
 <header>
-  <h1>🎬 8-bit → 10-bit Converter</h1>
-  <p>Debands gradients and re-encodes to true 10-bit · batch-capable</p>
+  <div class="row-inline" style="gap:10px">
+    <img id="headerIcon" alt="" style="width:22px;height:22px;border-radius:5px;flex-shrink:0">
+    <div>
+      <h1 style="margin:0">8-bit → 10-bit Converter</h1>
+      <p style="margin:2px 0 0">Debands gradients and re-encodes to true 10-bit · batch-capable</p>
+    </div>
+  </div>
 </header>
 <main>
   <div class="toolbar">
-    <button onclick="pick('files')">＋ Add files</button>
-    <button onclick="pick('folder')">📁 Add folder</button>
-    <button class="ghost" onclick="removeSel()">Remove</button>
-    <button class="ghost" onclick="clearQueue()">Clear</button>
+    <div class="split-btn">
+      <button onclick="pick('files')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+        Add
+      </button>
+      <button class="chev" onclick="toggleMenu(event,'addMenu')">
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+      </button>
+    </div>
+    <div class="menu-wrap">
+      <div class="menu" id="addMenu" style="display:none;left:0;right:auto">
+        <button onclick="pick('files');closeAllMenus()">Add files…</button>
+        <button onclick="pick('folder');closeAllMenus()">Add folder…</button>
+      </div>
+    </div>
     <span class="spacer"></span>
-    <button class="ghost" onclick="openScopes()">📊 Preview scopes</button>
-    <button class="ghost" onclick="checkBanding()">🔍 Check banding</button>
-    <button class="ghost" id="watchBtn" onclick="toggleWatchPanel()">👁 Watch folder</button>
-    <button class="ghost" onclick="openReport()">📋 Last report</button>
-    <button class="ghost" onclick="openSettings()">⚙ Settings</button>
-    <button class="ghost" onclick="document.getElementById('mHelp').classList.add('on')" title="What this does">? Help</button>
+    <button class="icon-btn" title="Settings" onclick="openSettings()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06A1.65 1.65 0 004.6 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06A1.65 1.65 0 009 4.6a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+    </button>
+    <div class="menu-wrap">
+      <button class="icon-btn" title="More" onclick="toggleMenu(event,'moreMenu')">
+        <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>
+      </button>
+      <div class="menu" id="moreMenu" style="display:none">
+        <button onclick="toggleWatchPanel();closeAllMenus()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg><span id="watchMenuLabel">Watch folder…</span></button>
+        <button onclick="openReport();closeAllMenus()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 11H5a2 2 0 00-2 2v7a2 2 0 002 2h4m0-11v11m0-11h6l4 4v5a2 2 0 01-2 2h-8m0-11L9 4"/></svg>Last report…</button>
+        <button onclick="clearQueue();closeAllMenus()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 6h18M8 6V4a1 1 0 011-1h6a1 1 0 011 1v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6h14z"/></svg>Clear queue</button>
+        <button onclick="document.getElementById('mHelp').classList.add('on');closeAllMenus()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 015.83 1c0 2-3 2-3 4M12 17h.01"/></svg>What this does…</button>
+      </div>
+    </div>
   </div>
 
   <div class="toolbar" style="margin-top:0">
     <label style="color:var(--muted);align-self:center;margin-right:2px">Presets</label>
-    <button class="ghost" onclick="applyPreset('delivery')" title="HEVC · Match source · Medium deband">Delivery</button>
-    <button class="ghost" onclick="applyPreset('grading')" title="ProRes 4444 · High deband · 16-bit">Grading</button>
-    <button class="ghost" onclick="applyPreset('preserve')" title="HEVC · Match source · 16-bit · copy audio">Max preservation</button>
+    <button class="pill" id="presetBtn-delivery" onclick="applyPreset('delivery')" title="HEVC · Match source · Medium deband">Delivery</button>
+    <button class="pill" id="presetBtn-grading" onclick="applyPreset('grading')" title="ProRes 4444 · High deband · 16-bit">Grading</button>
+    <button class="pill" id="presetBtn-preserve" onclick="applyPreset('preserve')" title="HEVC · Match source · 16-bit · copy audio">Max preservation</button>
     <span id="customPresets" style="display:contents"></span>
-    <button class="ghost" onclick="saveCustomPreset()">＋ Save current as preset…</button>
+    <button class="pill ghost-add" onclick="saveCustomPreset()">＋ Save current as preset…</button>
+  </div>
+
+  <div id="bulkBar" class="row-inline" style="display:none;margin:8px 2px 0;gap:10px">
+    <span class="hint" style="margin:0" id="bulkCount"></span>
+    <button class="mini" onclick="removeSel()">Remove selected</button>
+    <button class="mini" onclick="clearSelection()">Clear selection</button>
   </div>
 
   <div class="card" id="watchPanel" style="display:none;padding:12px 14px;margin:10px 0">
@@ -197,7 +262,7 @@
   </div>
   <div class="statusbar" id="status">Add files or a folder to begin.</div>
   <div style="text-align:center;color:var(--muted);font-size:12px;margin-top:14px">
-    Built by <b>Jazib Ali 360</b> · deband + dither + true 10-bit · no AI, no reinterpretation
+    Built by <b>Jazib Ali 360</b> · deband + dither + true 10-bit
   </div>
 </main>
 
@@ -277,7 +342,7 @@
     <li><b>Adds grading headroom</b> — a true 10-bit intermediate so pushing curves in DaVinci/Premiere doesn't re-introduce banding.</li>
     <li><b>Optionally 16-bit precision</b> — cleaner gradient math, quantized to 10-bit. Precision only.</li>
   </ul>
-  <p style="line-height:1.6;color:var(--muted)"><b>What it does NOT do:</b> it can't recover detail that was never generated, and it uses <b>no AI</b> — nothing reinterprets, invents, or removes your detail and texture. If footage looks flat rather than banded, that's a generation-quality issue, not something a bit-depth conversion can fix.</p>
+  <p style="line-height:1.6;color:var(--muted)"><b>What it does NOT do:</b> it can't recover detail that was never generated. If footage looks flat rather than banded, that's a generation-quality issue, not something a bit-depth conversion can fix.</p>
   <p style="line-height:1.6;color:var(--muted)">Tip: use <b>Preview scopes</b> or <b>Compare</b> to see the effect before committing to a full encode.</p>
   <div style="border-top:1px solid var(--line);margin-top:14px;padding-top:10px;color:var(--muted);font-size:13px">Built by <b>Jazib Ali 360</b></div>
   <div class="set-actions"><button class="ghost" onclick="closeModal('mHelp')">Close</button></div>
@@ -334,6 +399,9 @@
 
 <script>
 const API = "";
+const APP_ICON = "data:image/png;base64,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";
+document.getElementById("favicon").href = APP_ICON;
+document.getElementById("headerIcon").src = APP_ICON;
 let SETTINGS = {};
 let queue = [];            // [{path,name,status,pct,dur,kbps,width,height,fps}]
 let running = false;
@@ -350,9 +418,20 @@ function segInit(id, cb){
       b.classList.add("on"); cb(b.dataset.v); };
   });
 }
-segInit("segMode", v=>{mode=v; updateCustomRate(); updateEstimate();});
-segInit("segStr", v=>{strength=v; updateEstimate();});
-segInit("segRate", v=>{ rate=v; updateCustomRate(); updateEstimate(); });
+segInit("segMode", v=>{mode=v; updateCustomRate(); updateEstimate(); setActivePreset(null);});
+segInit("segStr", v=>{strength=v; updateEstimate(); setActivePreset(null);});
+segInit("segRate", v=>{ rate=v; updateCustomRate(); updateEstimate(); setActivePreset(null); });
+
+// ---- overflow menus (Add split-button chevron, ⋯ More) ----
+function closeAllMenus(){ document.querySelectorAll(".menu").forEach(m=>m.style.display="none"); }
+function toggleMenu(e,id){
+  e.stopPropagation();
+  const el=document.getElementById(id);
+  const willOpen = el.style.display==="none";
+  closeAllMenus();
+  el.style.display = willOpen? "block":"none";
+}
+document.addEventListener("click",e=>{ if(!e.target.closest(".menu-wrap")) closeAllMenus(); });
 
 function setSeg(id,val){ const b=[...document.getElementById(id).querySelectorAll("button")].find(x=>x.dataset.v===val); if(b) b.click(); }
 const PRESETS={
@@ -367,7 +446,19 @@ async function applyPreset(name){
   SETTINGS={...cur,...p.settings};
   await j("/api/settings",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(SETTINGS)});
   updateCustomRate(); updateEstimate();
+  setActivePreset(name);
   setStatus(`Preset applied: ${p.label}.`);
+}
+
+// Highlights the currently-in-effect preset pill. null = none (user changed
+// Format/Deband/Bitrate manually since applying one, per the segInit hooks above).
+function setActivePreset(key){
+  ["delivery","grading","preserve"].forEach(k=>{
+    const b=document.getElementById("presetBtn-"+k); if(b) b.classList.toggle("active", k===key);
+  });
+  document.querySelectorAll("#customPresets [data-preset]").forEach(b=>{
+    b.classList.toggle("active", b.dataset.preset===key);
+  });
 }
 
 // ---- custom (user-saved) presets ----
@@ -377,7 +468,7 @@ async function loadCustomPresets(){
   const el=document.getElementById("customPresets");
   el.innerHTML=presets.map(p=>{
     const safe=escAttr(p.name), label=p.name.replace(/</g,"&lt;");
-    return `<button class="ghost" data-preset="${safe}">${label}</button>
+    return `<button class="pill" data-preset="${safe}">${label}</button>
     <button class="mini" title="Delete preset ${safe}" data-delpreset="${safe}" style="padding:5px 8px">✕</button>`;
   }).join("");
   return presets;
@@ -403,6 +494,7 @@ async function applyCustomPreset(name){
   SETTINGS={...cur,...p.settings};
   await j("/api/settings",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(SETTINGS)});
   updateCustomRate(); updateEstimate();
+  setActivePreset(name);
   setStatus(`Preset applied: ${name}.`);
 }
 async function deleteCustomPreset(name){
@@ -477,9 +569,20 @@ async function pick(kind){
 }
 function removeSel(){
   const checks=[...document.querySelectorAll("#queue input:checked")].map(c=>+c.dataset.i);
-  queue=queue.filter((_,i)=>!checks.includes(i)); renderQueue(queue); refreshConvert();
+  queue=queue.filter((_,i)=>!checks.includes(i)); renderQueue(queue); refreshConvert(); updateBulkBar();
+}
+function clearSelection(){
+  document.querySelectorAll("#queue input:checked").forEach(c=>c.checked=false); updateBulkBar();
 }
 function clearQueue(){ queue=[]; renderQueue(queue); refreshConvert(); setStatus("Queue cleared."); }
+// Contextual bulk-remove bar: only visible while at least one row is checked.
+function updateBulkBar(){
+  const n=document.querySelectorAll("#queue input:checked").length;
+  const bar=document.getElementById("bulkBar");
+  bar.style.display = n? "flex":"none";
+  document.getElementById("bulkCount").textContent = n? `${n} selected`:"";
+}
+document.getElementById("queue").addEventListener("change",e=>{ if(e.target.matches('input[type=checkbox]')) updateBulkBar(); });
 function refreshConvert(){ document.getElementById("btnConvert").disabled = running || !queue.length; updateEstimate(); if(rate==="Custom") drawZones(); }
 
 // ---- confirm-before-overwrite ----
@@ -642,7 +745,7 @@ async function refreshWatchStatus(){
   const w=await j("/api/watch");
   document.getElementById("watchFolder").value=w.folder||"";
   document.getElementById("watchToggleBtn").textContent = w.enabled? "Stop watching" : "Start watching";
-  document.getElementById("watchBtn").textContent = w.enabled? "👁 Watching…" : "👁 Watch folder";
+  const wLbl=document.getElementById("watchMenuLabel"); if(wLbl) wLbl.textContent = w.enabled? "Watching…" : "Watch folder…";
   document.getElementById("watchStatus").textContent = w.enabled
     ? `Watching "${w.folder}" — ${w.processed} file(s) auto-converted so far. Checks every few seconds.`
     : "Not watching.";
