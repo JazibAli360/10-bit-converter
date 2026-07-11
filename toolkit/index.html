@@ -245,6 +245,11 @@
   </div>
 
   <div id="bandingBanner" style="display:none"></div>
+  <div id="batchSummaryBanner" class="banner banner-low" style="display:none;align-items:center;gap:10px">
+    <span id="batchSummaryText" style="flex:1"></span>
+    <button class="mini" onclick="openReport()">View report</button>
+    <button class="mini" onclick="document.getElementById('batchSummaryBanner').style.display='none'" title="Dismiss">✕</button>
+  </div>
   <div class="card queue" id="queue"></div>
 
   <details class="adjust">
@@ -452,6 +457,7 @@ document.getElementById("headerIcon").src = APP_ICON;
 let SETTINGS = {};
 let queue = [];            // [{path,name,status,pct,dur,kbps,width,height,fps}]
 let running = false;
+let wasRunning = false;
 let mode = "HEVC (smaller, delivery)";
 let strength = "Medium";
 let rate = "Match source";
@@ -762,9 +768,26 @@ async function poll(){
     document.getElementById("batchBar").style.width=s.batch.overall+"%";
   } else { bw.style.display="none"; document.getElementById("batchStats").textContent=""; }
   if(s.summary && !running){ setStatus(s.summary); }
+  if(wasRunning && !running) showBatchSummary();
+  wasRunning=running;
   setControls();
   if(running) setTimeout(poll,500);
   else document.querySelectorAll("#queue input").forEach(c=>c.disabled=false);
+}
+
+// ---- inline dismissible batch-summary banner (shown once a batch finishes) ----
+async function showBatchSummary(){
+  const r=await j("/api/report");
+  if(!r || !r.time) return;
+  const parts=[`${r.done} done`];
+  if(r.skipped) parts.push(`${r.skipped} skipped`);
+  if(r.failed) parts.push(`${r.failed} failed`);
+  if(r.cancelled) parts.push("cancelled");
+  document.getElementById("batchSummaryText").innerHTML=
+    `<b>${parts.join(", ")}</b> · ${r.total_in_size||"—"} → ${r.total_out_size||"—"} · ${r.elapsed_sec}s`;
+  const banner=document.getElementById("batchSummaryBanner");
+  banner.style.display="flex";
+  banner.className="banner "+(r.failed? "banner-high":"banner-low");
 }
 
 // ---- settings ----
