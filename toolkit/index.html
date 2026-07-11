@@ -24,7 +24,7 @@
   header{background:#1e2a38;color:#fff;padding:18px 22px}
   header h1{margin:0;font-size:20px;font-weight:600;letter-spacing:.2px}
   header p{margin:4px 0 0;color:#9db4cf;font-size:13px}
-  main{max-width:900px;margin:0 auto;padding:16px 20px 40px}
+  main{max-width:1100px;margin:0 auto;padding:16px 20px 40px}
   .toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:16px 0 10px}
   .toolbar .spacer{flex:1}
   button{font:inherit;border:0;border-radius:8px;padding:9px 14px;cursor:pointer;
@@ -37,7 +37,7 @@
   button.danger:hover{background:var(--danger-dk);filter:none}
   button.ghost{background:transparent;border:1px solid var(--line)}
   .card{background:var(--card);border:1px solid var(--line);border-radius:12px}
-  .queue{min-height:220px;max-height:44vh;overflow:auto;padding:8px;transition:outline .1s}
+  .queue{min-height:300px;max-height:52vh;overflow:auto;padding:8px;transition:outline .1s}
   .queue.drop{outline:2px dashed var(--accent);outline-offset:-6px;background:rgba(45,125,210,.07)}
   .empty{color:var(--muted);text-align:center;padding:52px 20px;line-height:1.6}
   .row{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px}
@@ -54,6 +54,15 @@
   .row .pct{width:52px;text-align:right;color:var(--muted);font-variant-numeric:tabular-nums}
   .s-Queued{color:var(--muted)} .s-Running{color:var(--run)} .s-Done{color:var(--ok)}
   .s-Failed{color:var(--danger)} .s-Skipped{color:var(--muted)} .s-Cancelled{color:var(--muted)}
+  .adjust{margin:10px 2px 4px;border:1px solid var(--line);border-radius:12px}
+  .adjust summary{list-style:none;cursor:pointer;padding:12px 16px;display:flex;align-items:center;
+    gap:8px;font-size:13px;font-weight:600;color:var(--muted)}
+  .adjust summary::-webkit-details-marker{display:none}
+  .adjust summary .chev{width:14px;height:14px;transition:transform .15s;color:var(--muted);flex-shrink:0}
+  .adjust[open] summary .chev{transform:rotate(90deg)}
+  .adjust summary .sum{font-weight:400;color:var(--muted);margin-left:2px}
+  .adjust .options{padding:4px 16px 14px;margin:0}
+  .adjust #customRate{margin:0 16px 14px}
   .options{display:flex;gap:24px;flex-wrap:wrap;align-items:center;margin:14px 2px}
   .options label{color:var(--muted);margin-right:10px}
   .seg{display:inline-flex;background:var(--chip);border-radius:9px;padding:3px}
@@ -212,37 +221,44 @@
   <div id="bandingBanner" style="display:none"></div>
   <div class="card queue" id="queue"></div>
 
-  <div class="options">
-    <div><label>Format</label>
-      <span class="seg" id="segMode">
-        <button data-v="HEVC (smaller, delivery)" class="on">HEVC</button>
-        <button data-v="ProRes 4444 (grading, huge file)">ProRes 4444</button>
-      </span>
+  <details class="adjust">
+    <summary>
+      <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 6l6 6-6 6"/></svg>
+      Adjust
+      <span class="sum" id="adjustSummary">— HEVC · Medium deband · Match source</span>
+    </summary>
+    <div class="options">
+      <div><label>Format</label>
+        <span class="seg" id="segMode">
+          <button data-v="HEVC (smaller, delivery)" class="on">HEVC</button>
+          <button data-v="ProRes 4444 (grading, huge file)">ProRes 4444</button>
+        </span>
+      </div>
+      <div><label>Deband</label>
+        <span class="seg" id="segStr">
+          <button data-v="Low">Low</button>
+          <button data-v="Medium" class="on">Medium</button>
+          <button data-v="High">High</button>
+          <button data-v="Custom">Custom</button>
+        </span>
+      </div>
+      <div><label>Bitrate</label>
+        <span class="seg" id="segRate">
+          <button data-v="Match source" class="on">Match source</button>
+          <button data-v="Quality (CRF)">Quality</button>
+          <button data-v="Custom">Custom</button>
+        </span>
+      </div>
     </div>
-    <div><label>Deband</label>
-      <span class="seg" id="segStr">
-        <button data-v="Low">Low</button>
-        <button data-v="Medium" class="on">Medium</button>
-        <button data-v="High">High</button>
-        <button data-v="Custom">Custom</button>
-      </span>
-    </div>
-    <div><label>Bitrate</label>
-      <span class="seg" id="segRate">
-        <button data-v="Match source" class="on">Match source</button>
-        <button data-v="Quality (CRF)">Quality</button>
-        <button data-v="Custom">Custom</button>
-      </span>
-    </div>
-  </div>
 
-  <div id="customRate" class="card" style="display:none;padding:12px 14px;margin-bottom:6px">
-    <div class="row-inline"><label style="color:var(--muted);width:60px">Target</label>
-      <input type="range" id="crBitrate" min="1" max="100" step="0.5" value="12" style="flex:1">
-      <span id="crVal" style="width:80px;text-align:right">12 Mbps</span></div>
-    <div id="crZone" style="height:6px;border-radius:3px;margin-top:8px;background:var(--chip)"></div>
-    <div id="crVerdict" class="hint" style="margin-top:5px"></div>
-  </div>
+    <div id="customRate" class="card" style="display:none;padding:12px 14px;margin:10px 0 0">
+      <div class="row-inline"><label style="color:var(--muted);width:60px">Target</label>
+        <input type="range" id="crBitrate" min="1" max="100" step="0.5" value="12" style="flex:1">
+        <span id="crVal" style="width:80px;text-align:right">12 Mbps</span></div>
+      <div id="crZone" style="height:6px;border-radius:3px;margin-top:8px;background:var(--chip)"></div>
+      <div id="crVerdict" class="hint" style="margin-top:5px"></div>
+    </div>
+  </details>
 
   <div class="card now">
     <div class="lbl">NOW RUNNING</div>
@@ -628,6 +644,11 @@ function setControls(){
   document.getElementById("btnConvert").disabled = running || !queue.length;
   document.getElementById("btnCancel").disabled = !running;
   document.getElementById("btnStopAfter").disabled = !running;
+  // Contextual action bar: Convert is the only default-visible action; Stop/Cancel
+  // take its place only while a batch is actually running.
+  document.getElementById("btnConvert").style.display = running? "none":"inline-block";
+  document.getElementById("btnStopAfter").style.display = running? "inline-block":"none";
+  document.getElementById("btnCancel").style.display = running? "inline-block":"none";
 }
 async function poll(){
   const s=await j("/api/status");
@@ -936,7 +957,13 @@ function estBytes(it){
   if(rate==="Custom") return ((SETTINGS.target_mbps||12)*1e6+192000)/8*dur;
   return null; // CRF varies
 }
+function updateAdjustSummary(){
+  const fmt=mode.startsWith("ProRes")?"ProRes 4444":"HEVC";
+  const rt={"Match source":"Match source","Quality (CRF)":"Quality","Custom":"Custom bitrate"}[rate]||rate;
+  document.getElementById("adjustSummary").textContent=`— ${fmt} · ${strength} deband · ${rt}`;
+}
 function updateEstimate(){
+  updateAdjustSummary();
   const el=document.getElementById("estimate");
   if(!queue.length){ el.textContent=""; return; }
   if(!mode.startsWith("ProRes") && rate==="Quality (CRF)"){ el.textContent=`Estimated output: varies with content (quality mode, CRF ${SETTINGS.crf??18})`; return; }
@@ -1023,6 +1050,7 @@ j("/api/settings").then(s=>{SETTINGS=s; updateEstimate(); updateCustomRate();});
 loadCustomPresets();
 
 renderQueue(queue);
+setControls();
 </script>
 </body>
 </html>
