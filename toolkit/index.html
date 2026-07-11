@@ -94,6 +94,9 @@
   .now{padding:14px 16px;margin-top:6px}
   .now .lbl{font-size:11px;font-weight:700;letter-spacing:.5px;color:var(--muted)}
   .now .file{font-size:15px;font-weight:600;margin:2px 0}
+  .phase-pill{display:inline-block;font-size:10px;font-weight:700;letter-spacing:.03em;
+    text-transform:uppercase;color:var(--accent-text);background:var(--accent-dim);
+    padding:2px 7px;border-radius:5px;margin-right:6px;vertical-align:middle}
   .now .stats{color:var(--muted);font-size:13px;font-variant-numeric:tabular-nums;min-height:18px}
   .bar{height:8px;background:var(--chip);border-radius:5px;overflow:hidden;margin-top:10px}
   .bar>i{display:block;height:100%;width:0;background:var(--accent);transition:width .25s}
@@ -571,7 +574,7 @@ function renderQueue(items){
       : (it.path||"");
     r.innerHTML=`<span class="drag-handle" title="Drag to reorder">⠿</span>
       <input type="checkbox" data-i="${i}" ${running?'disabled':''}>
-      <span class="name-wrap"><span class="name" title="${srcInfo.replace(/"/g,'&quot;')}">${it.name}</span>
+      <span class="name-wrap"><span class="name" title="${srcInfo.replace(/"/g,'&quot;')}">${st==='Running'?`<span class="phase-pill">${currentPhase}</span>`:''}${it.name}</span>
         ${it.info?`<span class="info">${it.info}</span>`:''}</span>
       <span class="row-actions">
         <button class="mini" data-scopes="${i}" title="Preview scopes">Scopes</button>
@@ -724,11 +727,29 @@ function setControls(){
   document.getElementById("btnStopAfter").style.display = running? "inline-block":"none";
   document.getElementById("btnCancel").style.display = running? "inline-block":"none";
 }
+// Named phase, not just a %: the server folds phase info into s.now.file as a
+// ' — <suffix>' tail (e.g. 'pass 1/2 (analyzing)', 'pass 2/2', 'HEVC preview').
+// Parse it into a short label + a clean filename, used for both the Now-running
+// panel and the currently-running queue row.
+function phaseFromFile(fileStr){
+  const idx=fileStr.indexOf(" — ");
+  if(idx===-1) return {label:fileStr, phase:"Encoding"};
+  const label=fileStr.slice(0,idx), suffix=fileStr.slice(idx+3);
+  let phase="Encoding";
+  if(/pass 1\/2/.test(suffix)) phase="Analyzing";
+  else if(/HEVC preview/i.test(suffix)) phase="Rendering preview";
+  return {label, phase};
+}
+let currentPhase="Encoding";
 async function poll(){
   const s=await j("/api/status");
   running=s.running;
+  const parsed=phaseFromFile(s.now.file||"—");
+  currentPhase=parsed.phase;
   if(s.items && s.items.length){ queue=s.items; renderQueue(queue); }
-  document.getElementById("nowFile").textContent=s.now.file;
+  document.getElementById("nowFile").innerHTML = running
+    ? `<span class="phase-pill">${currentPhase}</span>${parsed.label}`
+    : parsed.label;
   const n=s.now;
   document.getElementById("nowStats").textContent = running
     ? `${n.pct}%  •  frame ${n.frame||"?"}  •  ${n.fps||"?"} fps  •  ${n.speed||"?"}  •  ETA ${n.eta}`
