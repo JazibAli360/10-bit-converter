@@ -14,7 +14,9 @@
     h1 { max-width:800px; margin:0; font-size:clamp(2.7rem,8vw,6.8rem); letter-spacing:-.065em; line-height:.91; }
     .lede { max-width:650px; margin:24px 0 38px; color:var(--muted); font-size:clamp(1rem,2vw,1.25rem); }
     .film { overflow:hidden; border:1px solid var(--line); border-radius:22px; background:#000; box-shadow:0 26px 80px rgba(0,0,0,.45); }
-    video { display:block; width:100%; max-height:72vh; background:#000; }
+    iframe, video { display:block; width:100%; aspect-ratio:16 / 9; border:0; background:#000; }
+    details { margin-top:16px; color:var(--muted); }
+    summary { cursor:pointer; }
     .actions { display:flex; flex-wrap:wrap; gap:12px; margin-top:26px; }
     a { color:inherit; text-decoration:none; }
     .button { display:inline-flex; align-items:center; min-height:46px; padding:0 18px; border:1px solid var(--line); border-radius:999px; font-weight:650; }
@@ -34,14 +36,25 @@
     <p class="lede">10-bit Converter reduces visible colour banding in 8-bit AI footage and creates a cleaner 10-bit master for the grade still ahead.</p>
 
     <section class="film" aria-label="10-bit Converter product film">
+      <iframe
+        src="https://www.youtube-nocookie.com/embed/HatF_mN1QC0?rel=0"
+        title="10-bit Converter product film"
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+        allowfullscreen>
+      </iframe>
+    </section>
+
+    <details>
+      <summary>Can’t use YouTube? Play the direct product film instead.</summary>
       <video controls playsinline preload="metadata">
         <source src="product-film.mp4" type="video/mp4">
         Your browser does not support HTML video. Use the download link below.
       </video>
-    </section>
+    </details>
 
     <div class="actions">
       <a class="button primary" href="https://github.com/JazibAli360/10-bit-converter/releases/latest">Download for Mac</a>
+      <a class="button" href="https://youtu.be/HatF_mN1QC0">Watch on YouTube</a>
       <a class="button" href="https://github.com/JazibAli360/10-bit-converter">View source on GitHub</a>
     </div>
 
