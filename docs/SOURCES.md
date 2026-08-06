@@ -33,5 +33,9 @@ below. Keep source links near factual claims; do not reproduce long passages.
 - App assets under `toolkit/JZB*` and `toolkit/10bit_converter.icns` are the
   repository’s shipped app assets.
 - Product film is project-owned media, published as a GitHub Release asset.
-- The repository deliberately omits the supplied third-party research files,
-  article snapshots, external source icons, and unverified promotional media.
+- `docs/gradient-banded.png` and `docs/gradient-treated.png` are project-owned
+  illustrative comparison graphics; they are not a measured benchmark.
+- `docs/8bit-vs-10bit-unifab.avif` is a supplied UniFab reference graphic.
+  It is used with a visible link credit on the product page and in the README.
+- The repository otherwise omits supplied third-party research files, article
+  snapshots, external source icons, and unverified promotional media.

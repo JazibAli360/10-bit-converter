@@ -31,12 +31,28 @@
     .steps strong { color:var(--ink); }
     .screenshot { display:block; width:100%; margin-top:28px; border:1px solid var(--line); border-radius:12px; }
     .caption { margin:10px 0 0; color:var(--muted); font-size:.86rem; }
+    .colour-story { margin-top:54px; }
+    .colour-story h2 { margin:0; font-size:clamp(1.7rem,3.5vw,2.7rem); letter-spacing:-.045em; }
+    .colour-story > p { max-width:760px; color:var(--muted); }
+    .bit-facts, .gradient-compare { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:18px; margin-top:24px; }
+    .bit-card, figure { margin:0; overflow:hidden; border:1px solid var(--line); border-radius:16px; background:#14111f; }
+    .bit-card { padding:24px; }
+    .bit-card .number { display:block; margin-bottom:8px; color:#cbbcff; font-size:clamp(2rem,5vw,3.8rem); font-weight:760; letter-spacing:-.07em; line-height:1; }
+    .bit-card b { display:block; margin-bottom:8px; }
+    .bit-card span { color:var(--muted); font-size:.92rem; }
+    figure img { display:block; width:100%; aspect-ratio:4 / 3; object-fit:cover; background:#0c0a14; }
+    figcaption { padding:14px 16px 16px; color:var(--muted); font-size:.88rem; }
+    figcaption strong { display:block; margin-bottom:3px; color:var(--ink); }
+    .reference-graphic { margin-top:18px; }
+    .reference-graphic img { aspect-ratio:auto; object-fit:contain; }
+    .source-note { margin-top:12px; color:var(--muted); font-size:.84rem; }
+    .source-note a { color:#cbbcff; text-decoration:underline; text-underline-offset:3px; }
     .facts { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:1px; margin-top:54px; overflow:hidden; border:1px solid var(--line); border-radius:16px; background:var(--line); }
     .fact { padding:22px; background:#14111f; }
     .fact b { display:block; margin-bottom:5px; font-size:.86rem; }
     .fact span { color:var(--muted); font-size:.9rem; }
     footer { margin-top:44px; color:var(--muted); font-size:.9rem; }
-    @media (max-width:640px) { main { width:min(100% - 28px,1120px); padding-top:34px; } .facts { grid-template-columns:1fr; } .film { border-radius:14px; } .brand-lockup { gap:14px; } }
+    @media (max-width:640px) { main { width:min(100% - 28px,1120px); padding-top:34px; } .facts, .bit-facts, .gradient-compare { grid-template-columns:1fr; } .film { border-radius:14px; } .brand-lockup { gap:14px; } }
   </style>
 </head>
 <body>
@@ -70,6 +86,34 @@
       <a class="button" href="https://youtu.be/HatF_mN1QC0">Watch on YouTube</a>
       <a class="button" href="https://github.com/JazibAli360/10-bit-converter">View source on GitHub</a>
     </div>
+
+    <section class="colour-story" aria-labelledby="colour-heading">
+      <p class="eyebrow">Why this exists</p>
+      <h2 id="colour-heading">More tonal steps. Fewer visible stairs.</h2>
+      <p>Colour banding is what happens when a smooth change—think a sky, mist, a shadow, or a skin-tone rolloff—has too few tonal steps and turns into visible stripes. An 8-bit file has 256 code values per colour channel. A 10-bit file has 1,024: four times as many steps per channel and 64 times as many possible RGB combinations.</p>
+
+      <div class="bit-facts" aria-label="8-bit and 10-bit comparison">
+        <div class="bit-card"><span class="number">256</span><b>8-bit values per channel</b><span>About 16.7 million possible RGB colours. Fine for many finished videos, but fragile when AI footage or a hard grade exposes a smooth gradient.</span></div>
+        <div class="bit-card"><span class="number">1,024</span><b>10-bit values per channel</b><span>About 1.07 billion possible RGB colours. The extra tonal precision gives grading and re-encoding more room to work without making the steps shout.</span></div>
+      </div>
+
+      <div class="gradient-compare" aria-label="Illustrative banding comparison">
+        <figure>
+          <img src="gradient-banded.png" alt="Blue gradient with visible horizontal colour bands">
+          <figcaption><strong>8-bit-style banding</strong>Visible jumps appear in what should feel like one smooth gradient.</figcaption>
+        </figure>
+        <figure>
+          <img src="gradient-treated.png" alt="Blue gradient treated with debanding and dither to make transitions look smoother">
+          <figcaption><strong>Debanded + dithered 10-bit master</strong>Fine texture breaks up the harsh contour lines so the transition reads more naturally.</figcaption>
+        </figure>
+      </div>
+
+      <figure class="reference-graphic">
+        <img src="8bit-vs-10bit-unifab.avif" alt="Reference illustration comparing 8-bit and 10-bit colour gradients">
+        <figcaption><strong>8-bit versus 10-bit, at a glance</strong>More code values mean smaller changes between adjacent tones.</figcaption>
+      </figure>
+      <p class="source-note">Important: converting an 8-bit file to 10-bit cannot recover colour information that was never captured. 10-bit Converter reduces visible banding with debanding and dither, then writes a more resilient 10-bit master for the grade or delivery ahead. Facts and reference graphic: <a href="https://daredreamer.com/understanding-8bit-vs-10bit/">Dare Dreamer</a>, <a href="https://unifab.ai/resource/what-is-color-banding">UniFab</a>, and <a href="https://arxiv.org/pdf/2110.08569">Deep Image Debanding</a>. See the full <a href="https://github.com/JazibAli360/10-bit-converter/blob/main/docs/SOURCES.md">source ledger</a>.</p>
+    </section>
 
     <section class="first-run" aria-labelledby="first-run-heading">
       <p class="eyebrow">First launch on macOS</p>

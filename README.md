@@ -15,6 +15,26 @@ It does **not** recover colour information that was never present in an
 8-bit source. It is a practical banding-reduction and 10-bit delivery tool,
 not a detail-restoration model.
 
+## Why 8-bit versus 10-bit matters
+
+Banding is a visible staircase in a gradient that should look smooth. 8-bit
+video has **256 values per colour channel** (about 16.7 million possible RGB
+colours); 10-bit has **1,024 values per channel** (about 1.07 billion RGB
+colours). That extra precision gives grading and delivery more tonal room.
+
+| Visible 8-bit-style banding | Debanded + dithered 10-bit master |
+| --- | --- |
+| ![Blue gradient with visible colour bands](docs/gradient-banded.png) | ![Blue gradient with smoother transitions after debanding and dither](docs/gradient-treated.png) |
+| Steps become obvious in smooth skies and shadows. | Dither breaks up hard contour lines so transitions read more naturally. |
+
+Converting an 8-bit file to 10-bit cannot restore colour detail that was
+never in the source. The app reduces visible banding and writes a more
+resilient 10-bit master; it does not claim to invent missing detail.
+
+![Reference illustration comparing 8-bit and 10-bit gradients](docs/8bit-vs-10bit-unifab.avif)
+
+Reference visual: [UniFab — Color Banding in Video](https://unifab.ai/resource/what-is-color-banding). Bit-depth context: [Dare Dreamer](https://daredreamer.com/understanding-8bit-vs-10bit/) and [Deep Image Debanding](https://arxiv.org/pdf/2110.08569). Full attributions are in [docs/SOURCES.md](docs/SOURCES.md).
+
 ## Product film
 
 **[▶ Play the 10-bit Converter product film](https://jazibali360.github.io/10-bit-converter/)**
