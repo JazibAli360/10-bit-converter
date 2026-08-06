@@ -13,11 +13,11 @@ not a detail-restoration model.
 
 ## Product film
 
-<video src="https://github.com/JazibAli360/10-bit-converter/releases/download/v0.1.0/product-film.mp4" controls muted playsinline width="960">
-  Your browser does not support embedded video. Download the product film from the link below.
-</video>
+**[▶ Play the 10-bit Converter product film](https://jazibali360.github.io/10-bit-converter/)**
 
-[▶ Watch or download the 10-bit Converter product film](https://github.com/JazibAli360/10-bit-converter/releases/download/v0.1.0/product-film.mp4)
+GitHub README files do not support inline MP4 playback, so the film has its own
+playable product page. You can also download the MP4 from the
+[current GitHub Release](https://github.com/JazibAli360/10-bit-converter/releases/latest).
 
 ## What it does
 

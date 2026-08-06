@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="10-bit Converter reduces visible colour banding in 8-bit AI video and creates cleaner 10-bit grading masters.">
+  <title>10-bit Converter — product film</title>
+  <style>
+    :root { color-scheme: dark; --ink:#f0edfb; --muted:#aaa3bf; --navy:#071535; --violet:#5d3bd1; --line:rgba(240,237,251,.16); }
+    * { box-sizing:border-box; }
+    body { margin:0; min-height:100vh; color:var(--ink); background:#0c0a14; font:16px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+    main { width:min(1120px,calc(100% - 40px)); margin:auto; padding:56px 0 72px; }
+    .eyebrow { margin:0 0 16px; color:#cbbcff; font-size:.78rem; font-weight:750; letter-spacing:.12em; text-transform:uppercase; }
+    h1 { max-width:800px; margin:0; font-size:clamp(2.7rem,8vw,6.8rem); letter-spacing:-.065em; line-height:.91; }
+    .lede { max-width:650px; margin:24px 0 38px; color:var(--muted); font-size:clamp(1rem,2vw,1.25rem); }
+    .film { overflow:hidden; border:1px solid var(--line); border-radius:22px; background:#000; box-shadow:0 26px 80px rgba(0,0,0,.45); }
+    video { display:block; width:100%; max-height:72vh; background:#000; }
+    .actions { display:flex; flex-wrap:wrap; gap:12px; margin-top:26px; }
+    a { color:inherit; text-decoration:none; }
+    .button { display:inline-flex; align-items:center; min-height:46px; padding:0 18px; border:1px solid var(--line); border-radius:999px; font-weight:650; }
+    .button.primary { border-color:transparent; background:linear-gradient(112deg,#5d3bd1,#8f67ee); }
+    .facts { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:1px; margin-top:54px; overflow:hidden; border:1px solid var(--line); border-radius:16px; background:var(--line); }
+    .fact { padding:22px; background:#14111f; }
+    .fact b { display:block; margin-bottom:5px; font-size:.86rem; }
+    .fact span { color:var(--muted); font-size:.9rem; }
+    footer { margin-top:44px; color:var(--muted); font-size:.9rem; }
+    @media (max-width:640px) { main { width:min(100% - 28px,1120px); padding-top:34px; } .facts { grid-template-columns:1fr; } .film { border-radius:14px; } }
+  </style>
+</head>
+<body>
+  <main>
+    <p class="eyebrow">Jazib Ali 360 · macOS</p>
+    <h1>Make AI gradients behave.</h1>
+    <p class="lede">10-bit Converter reduces visible colour banding in 8-bit AI footage and creates a cleaner 10-bit master for the grade still ahead.</p>
+
+    <section class="film" aria-label="10-bit Converter product film">
+      <video controls playsinline preload="metadata">
+        <source src="product-film.mp4" type="video/mp4">
+        Your browser does not support HTML video. Use the download link below.
+      </video>
+    </section>
+
+    <div class="actions">
+      <a class="button primary" href="https://github.com/JazibAli360/10-bit-converter/releases/latest">Download for Mac</a>
+      <a class="button" href="https://github.com/JazibAli360/10-bit-converter">View source on GitHub</a>
+    </div>
+
+    <section class="facts" aria-label="Product facts">
+      <div class="fact"><b>Local only</b><span>Nothing is uploaded for conversion.</span></div>
+      <div class="fact"><b>Honest 10-bit</b><span>Deband + dither; no fake detail restoration.</span></div>
+      <div class="fact"><b>Made for post</b><span>HEVC Main10 or ProRes 4444 output.</span></div>
+    </section>
+
+    <footer>MIT licensed. Made for clips where the sky has started looking like stairs.</footer>
+  </main>
+</body>
+</html>
