@@ -25,10 +25,9 @@ to be safe to resume in a future session.
   and light/dark-mode verification with real conversions.
 - The corresponding commits are `fb60510` through `d4b45ba`.
 - The next work is the frozen native-app vertical slice described in Phase 0.
-- `Imagine Art - Icon.png` is the chosen source art. It is already embedded
-  in the web app. Obtain a 1024x1024 master before creating the release
-  `.icns`; the existing 534x534 image is adequate for the web favicon but not
-  ideal as the highest-resolution macOS icon source.
+- `toolkit/JZB.png`, `toolkit/JZB.icns`, and `toolkit/10bit_converter.icns`
+  are the shipped product assets. Keep release visual work based on those
+  assets; do not reintroduce unrelated source icons into the public project.
 
 ## Completed redesign record (Phase A)
 

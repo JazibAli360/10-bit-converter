@@ -53,6 +53,16 @@ Want a Windows build? Start with [`.windows/README.md`](.windows/README.md),
 or hand the copy-ready brief in [`.windows/AGENT_BUILD.md`](.windows/AGENT_BUILD.md)
 to an AI coding agent on a Windows x64 machine.
 
+## Forking, agents, and brand context
+
+- Start with [AGENTS.md](AGENTS.md) for architecture, safety constraints, and
+  verification requirements.
+- Use [docs/BRAND.md](docs/BRAND.md) for honest product language, visual
+  direction, attribution, and release copy.
+- Use [docs/PRODUCT_STORY.md](docs/PRODUCT_STORY.md) and
+  [docs/SOURCES.md](docs/SOURCES.md) for the credited case-study narrative,
+  research ledger, and product-film guidance.
+
 The repository intentionally excludes packaged `.app` bundles, FFmpeg binaries,
 test videos, and other large local artifacts. Add your own redistributable
 FFmpeg/FFprobe binaries when building a standalone app, and follow their
