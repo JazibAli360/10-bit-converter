@@ -38,6 +38,10 @@ below. Keep source links near factual claims; do not reproduce long passages.
 - `docs/banding-explainer-original.png` is an original project illustration,
   generated for this product page. It is labelled illustrative and is not a
   measured output test.
+- `docs/use-case-skin-tones.png`, `docs/use-case-fog-gradients.png`, and
+  `docs/use-case-shadow-gradients.png` are original photorealistic
+  illustrative use-case images generated for this project. They are labelled
+  illustrative; they are not measured tests or claims about specific footage.
 - `docs/8bit-vs-10bit-unifab.avif` is a supplied UniFab reference graphic.
   It is used with a visible link credit on the product page and in the README.
 - The repository otherwise omits supplied third-party research files, article

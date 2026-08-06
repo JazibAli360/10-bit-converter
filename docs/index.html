@@ -82,6 +82,8 @@
     .diagnosis-copy { padding:15px; }
     .diagnosis-copy b { display:block; margin-bottom:4px; }
     .diagnosis-copy span { color:var(--muted); font-size:.88rem; }
+    .use-case-gallery { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin-top:24px; }
+    .use-case-gallery figure img { aspect-ratio:16 / 9; object-fit:cover; }
     .privacy { margin-top:32px; padding:22px; border:1px solid rgba(167,139,250,.36); border-radius:16px; background:linear-gradient(110deg,rgba(93,59,209,.22),rgba(7,21,53,.6)); }
     .privacy h2 { margin:0 0 8px; font-size:clamp(1.35rem,2.5vw,1.85rem); letter-spacing:-.035em; }
     .privacy p { max-width:760px; margin:0; color:#ded8ee; }
@@ -99,7 +101,7 @@
     .fact b { display:block; margin-bottom:5px; font-size:.86rem; }
     .fact span { color:var(--muted); font-size:.9rem; }
     footer { margin-top:44px; color:var(--muted); font-size:.9rem; }
-    @media (max-width:640px) { main { width:min(100% - 28px,1120px); padding-top:34px; } .facts, .bit-facts, .gradient-compare, .pipeline, .limits, .architecture, .benchmarks, .diagnosis { grid-template-columns:1fr; } .film { border-radius:14px; } .brand-lockup { gap:14px; } .pipeline-step:not(:last-child)::after, .architecture-step:not(:last-child)::after { top:auto; right:auto; bottom:-24px; left:50%; transform:translateX(-50%) rotate(90deg); } .export-table { font-size:.9rem; } .export-table th, .export-table td { padding:12px 8px; } }
+    @media (max-width:640px) { main { width:min(100% - 28px,1120px); padding-top:34px; } .facts, .bit-facts, .gradient-compare, .pipeline, .limits, .architecture, .benchmarks, .diagnosis, .use-case-gallery { grid-template-columns:1fr; } .film { border-radius:14px; } .brand-lockup { gap:14px; } .pipeline-step:not(:last-child)::after, .architecture-step:not(:last-child)::after { top:auto; right:auto; bottom:-24px; left:50%; transform:translateX(-50%) rotate(90deg); } .export-table { font-size:.9rem; } .export-table th, .export-table td { padding:12px 8px; } }
   </style>
 </head>
 <body>
@@ -170,6 +172,22 @@
           <figcaption><strong>Debanded + dithered 10-bit master</strong>Fine texture breaks up the harsh contour lines so the transition reads more naturally.</figcaption>
         </figure>
       </div>
+
+      <div class="use-case-gallery" aria-label="Photorealistic illustrative use cases">
+        <figure>
+          <img src="use-case-skin-tones.png" alt="Photorealistic illustrative close-up with posterized skin tones on the left and smoother tones on the right">
+          <figcaption><strong>Skin-tone rolloff</strong>Cheeks, temples, and soft key light can reveal posterization fast.</figcaption>
+        </figure>
+        <figure>
+          <img src="use-case-fog-gradients.png" alt="Photorealistic illustrative foggy landscape with banding on the left and smooth fog on the right">
+          <figcaption><strong>Fog and atmosphere</strong>Wide, low-texture gradients make contour lines especially visible.</figcaption>
+        </figure>
+        <figure>
+          <img src="use-case-shadow-gradients.png" alt="Photorealistic illustrative dark interior with shadow banding on the left and smoother shadows on the right">
+          <figcaption><strong>Shadows and interiors</strong>Lifted blacks and compressed dark areas can turn a rolloff into stripes.</figcaption>
+        </figure>
+      </div>
+      <p class="source-note">These are original photorealistic illustrative use cases, generated for this project to explain the problem—not claims about a measured output test or specific real footage.</p>
 
       <figure class="reference-graphic">
         <img src="8bit-vs-10bit-unifab.avif" alt="Reference illustration comparing 8-bit and 10-bit colour gradients">

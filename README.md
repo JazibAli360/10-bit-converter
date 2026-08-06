@@ -32,6 +32,17 @@ a measured output test.*
 | ![Blue gradient with visible colour bands](docs/gradient-banded.png) | ![Blue gradient with smoother transitions after debanding and dither](docs/gradient-treated.png) |
 | Steps become obvious in smooth skies and shadows. | Dither breaks up hard contour lines so transitions read more naturally. |
 
+### The places creators notice it
+
+| Skin-tone rolloff | Fog and atmosphere | Shadows and interiors |
+| --- | --- | --- |
+| ![Photorealistic illustrative close-up with banded skin tones left and smoother tones right](docs/use-case-skin-tones.png) | ![Photorealistic illustrative foggy landscape with banding left and smoother fog right](docs/use-case-fog-gradients.png) | ![Photorealistic illustrative dark room with banded shadows left and smoother shadows right](docs/use-case-shadow-gradients.png) |
+| Soft cheek, temple, and key-light transitions can expose posterization. | Large low-texture gradients make contour lines particularly obvious. | Lifted blacks and compressed dark areas can turn a rolloff into stripes. |
+
+*These are original photorealistic illustrative use cases, generated for this
+project. They explain the problem; they are not measured output tests or
+claims about specific real footage.*
+
 Converting an 8-bit file to 10-bit cannot restore colour detail that was
 never in the source. The app reduces visible banding and writes a more
 resilient 10-bit master; it does not claim to invent missing detail.
