@@ -1,8 +1,16 @@
 # Windows x64 release
 
-Everything needed to build, test, and package the Windows version lives here.
-The app remains local-only: source videos are processed on the creator's
-machine and never uploaded by the desktop app.
+## Project status — contributions welcome
+
+The Windows build path is scaffolded, but incomplete: it has not been built,
+tested, or released from a Windows machine yet. The maintainer does not
+currently have access to Windows hardware. If you do, you are welcome to make
+your own build, validate it, improve it, and share the work back through a
+pull request or issue.
+
+Everything needed to attempt a build, test, and package the Windows version
+lives here. The app remains local-only: source videos are processed on the
+creator's machine and never uploaded by the desktop app.
 
 ## Two release modes
 

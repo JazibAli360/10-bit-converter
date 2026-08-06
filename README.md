@@ -176,6 +176,13 @@ The current packaged release target is Apple Silicon macOS. Windows build and
 GPU packaging tooling lives in [`.windows/`](.windows/), but a final Windows
 installer needs to be built and validated on Windows hardware.
 
+**Windows is an open invitation.** I do not currently have access to a Windows
+machine, so the Windows build is incomplete and there is no validated Windows
+release. If you do have a Windows machine, you are welcome to make your own
+build, test it, improve it, or take the work further. Start with the
+[Windows build notes](.windows/README.md) or hand the copy-ready
+[agent brief](.windows/AGENT_BUILD.md) to an AI coding agent on Windows x64.
+
 ## Downloads and product film
 
 Download the current macOS build and watch the product film from the
