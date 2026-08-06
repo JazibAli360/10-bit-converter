@@ -11,6 +11,14 @@ It does **not** recover colour information that was never present in an
 8-bit source. It is a practical banding-reduction and 10-bit delivery tool,
 not a detail-restoration model.
 
+## Product film
+
+<video src="https://github.com/JazibAli360/10-bit-converter/releases/download/v0.1.0/product-film.mp4" controls muted playsinline width="960">
+  Your browser does not support embedded video. Download the product film from the link below.
+</video>
+
+[▶ Watch or download the 10-bit Converter product film](https://github.com/JazibAli360/10-bit-converter/releases/download/v0.1.0/product-film.mp4)
+
 ## What it does
 
 - Processes videos locally — no uploads, accounts, or cloud rendering.
