@@ -35,6 +35,9 @@ below. Keep source links near factual claims; do not reproduce long passages.
 - Product film is project-owned media, published as a GitHub Release asset.
 - `docs/gradient-banded.png` and `docs/gradient-treated.png` are project-owned
   illustrative comparison graphics; they are not a measured benchmark.
+- `docs/banding-explainer-original.png` is an original project illustration,
+  generated for this product page. It is labelled illustrative and is not a
+  measured output test.
 - `docs/8bit-vs-10bit-unifab.avif` is a supplied UniFab reference graphic.
   It is used with a visible link credit on the product page and in the README.
 - The repository otherwise omits supplied third-party research files, article

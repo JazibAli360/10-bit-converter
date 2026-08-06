@@ -22,6 +22,11 @@ video has **256 values per colour channel** (about 16.7 million possible RGB
 colours); 10-bit has **1,024 values per channel** (about 1.07 billion RGB
 colours). That extra precision gives grading and delivery more tonal room.
 
+![Illustrative split view of a posterized blue sky and a smoother blue sky](docs/banding-explainer-original.png)
+
+*Original project illustration: a visual explanation of the cleanup goal, not
+a measured output test.*
+
 | Visible 8-bit-style banding | Debanded + dithered 10-bit master |
 | --- | --- |
 | ![Blue gradient with visible colour bands](docs/gradient-banded.png) | ![Blue gradient with smoother transitions after debanding and dither](docs/gradient-treated.png) |
@@ -34,6 +39,12 @@ resilient 10-bit master; it does not claim to invent missing detail.
 ![Reference illustration comparing 8-bit and 10-bit gradients](docs/8bit-vs-10bit-unifab.avif)
 
 Reference visual: [UniFab — Color Banding in Video](https://unifab.ai/resource/what-is-color-banding). Bit-depth context: [Dare Dreamer](https://daredreamer.com/understanding-8bit-vs-10bit/) and [Deep Image Debanding](https://arxiv.org/pdf/2110.08569). Full attributions are in [docs/SOURCES.md](docs/SOURCES.md).
+
+### Where banding tends to show up
+
+| Skies | Fog, walls, and broad gradients | Shadows and lifted blacks |
+| --- | --- | --- |
+| Smooth horizon fades can reveal contour lines after a grade. | Low-texture areas make discrete tonal steps easy to see. | Compression and heavy grading can turn a gentle rolloff into stripes. |
 
 ## Product film
 

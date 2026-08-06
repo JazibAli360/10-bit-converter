@@ -43,6 +43,8 @@
     figure img { display:block; width:100%; aspect-ratio:4 / 3; object-fit:cover; background:#0c0a14; }
     figcaption { padding:14px 16px 16px; color:var(--muted); font-size:.88rem; }
     figcaption strong { display:block; margin-bottom:3px; color:var(--ink); }
+    figure.explainer-art { margin-top:24px; }
+    figure.explainer-art img { aspect-ratio:16 / 9; object-fit:cover; }
     .reference-graphic { margin-top:18px; }
     .reference-graphic img { aspect-ratio:auto; object-fit:contain; }
     .source-note { margin-top:12px; color:var(--muted); font-size:.84rem; }
@@ -71,6 +73,15 @@
     .benchmark { padding:18px; border:1px solid var(--line); border-radius:14px; background:#0c0a14; }
     .benchmark b { display:block; margin-bottom:7px; color:#cbbcff; font-size:1.35rem; letter-spacing:-.04em; }
     .benchmark span { color:var(--muted); font-size:.86rem; }
+    .diagnosis { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-top:20px; }
+    .diagnosis-card { overflow:hidden; border:1px solid var(--line); border-radius:14px; background:#14111f; }
+    .diagnosis-visual { height:92px; background:linear-gradient(#071535,#75bfff); }
+    .diagnosis-visual.sky { background:repeating-linear-gradient(to bottom,rgba(19,47,116,.28) 0 7px,rgba(90,164,240,.28) 8px 19px),linear-gradient(#071535,#7ac4ff); }
+    .diagnosis-visual.fog { background:repeating-linear-gradient(to bottom,rgba(16,55,91,.22) 0 8px,rgba(146,210,242,.17) 9px 20px),linear-gradient(#173052,#b6e4f4); }
+    .diagnosis-visual.shadow { background:repeating-linear-gradient(to bottom,rgba(1,7,25,.28) 0 9px,rgba(35,40,82,.22) 10px 21px),linear-gradient(#070713,#333761); }
+    .diagnosis-copy { padding:15px; }
+    .diagnosis-copy b { display:block; margin-bottom:4px; }
+    .diagnosis-copy span { color:var(--muted); font-size:.88rem; }
     .privacy { margin-top:32px; padding:22px; border:1px solid rgba(167,139,250,.36); border-radius:16px; background:linear-gradient(110deg,rgba(93,59,209,.22),rgba(7,21,53,.6)); }
     .privacy h2 { margin:0 0 8px; font-size:clamp(1.35rem,2.5vw,1.85rem); letter-spacing:-.035em; }
     .privacy p { max-width:760px; margin:0; color:#ded8ee; }
@@ -88,7 +99,7 @@
     .fact b { display:block; margin-bottom:5px; font-size:.86rem; }
     .fact span { color:var(--muted); font-size:.9rem; }
     footer { margin-top:44px; color:var(--muted); font-size:.9rem; }
-    @media (max-width:640px) { main { width:min(100% - 28px,1120px); padding-top:34px; } .facts, .bit-facts, .gradient-compare, .pipeline, .limits, .architecture, .benchmarks { grid-template-columns:1fr; } .film { border-radius:14px; } .brand-lockup { gap:14px; } .pipeline-step:not(:last-child)::after, .architecture-step:not(:last-child)::after { top:auto; right:auto; bottom:-24px; left:50%; transform:translateX(-50%) rotate(90deg); } .export-table { font-size:.9rem; } .export-table th, .export-table td { padding:12px 8px; } }
+    @media (max-width:640px) { main { width:min(100% - 28px,1120px); padding-top:34px; } .facts, .bit-facts, .gradient-compare, .pipeline, .limits, .architecture, .benchmarks, .diagnosis { grid-template-columns:1fr; } .film { border-radius:14px; } .brand-lockup { gap:14px; } .pipeline-step:not(:last-child)::after, .architecture-step:not(:last-child)::after { top:auto; right:auto; bottom:-24px; left:50%; transform:translateX(-50%) rotate(90deg); } .export-table { font-size:.9rem; } .export-table th, .export-table td { padding:12px 8px; } }
   </style>
 </head>
 <body>
@@ -133,9 +144,20 @@
       <h2 id="colour-heading">More tonal steps. Fewer visible stairs.</h2>
       <p>Colour banding is what happens when a smooth change—think a sky, mist, a shadow, or a skin-tone rolloff—has too few tonal steps and turns into visible stripes. An 8-bit file has 256 code values per colour channel. A 10-bit file has 1,024: four times as many steps per channel and 64 times as many possible RGB combinations.</p>
 
+      <figure class="explainer-art">
+        <img src="banding-explainer-original.png" alt="Illustrative split view of a posterized, banded blue sky on the left and a smoother blue sky on the right">
+        <figcaption><strong>From contour lines to a calmer gradient</strong>This original illustration visualizes the purpose of debanding and dither; it is not a measured output test.</figcaption>
+      </figure>
+
       <div class="bit-facts" aria-label="8-bit and 10-bit comparison">
         <div class="bit-card"><span class="number">256</span><b>8-bit values per channel</b><span>About 16.7 million possible RGB colours. Fine for many finished videos, but fragile when AI footage or a hard grade exposes a smooth gradient.</span></div>
         <div class="bit-card"><span class="number">1,024</span><b>10-bit values per channel</b><span>About 1.07 billion possible RGB colours. The extra tonal precision gives grading and re-encoding more room to work without making the steps shout.</span></div>
+      </div>
+
+      <div class="diagnosis" aria-label="Where to look for banding">
+        <div class="diagnosis-card"><div class="diagnosis-visual sky"></div><div class="diagnosis-copy"><b>Skies</b><span>Watch the smooth fade above the horizon, especially after a grade.</span></div></div>
+        <div class="diagnosis-card"><div class="diagnosis-visual fog"></div><div class="diagnosis-copy"><b>Fog and walls</b><span>Low-texture areas make discrete tonal steps particularly easy to spot.</span></div></div>
+        <div class="diagnosis-card"><div class="diagnosis-visual shadow"></div><div class="diagnosis-copy"><b>Shadows</b><span>Compression and lifted blacks can turn a gentle rolloff into stripes.</span></div></div>
       </div>
 
       <div class="gradient-compare" aria-label="Illustrative banding comparison">
