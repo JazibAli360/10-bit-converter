@@ -53,6 +53,15 @@ Download the current macOS build and watch the product film from the
 [GitHub Releases page](https://github.com/JazibAli360/10-bit-converter/releases).
 The release asset is an Apple Silicon (`arm64`) macOS app archive.
 
+### First launch on macOS
+
+This open-source build is not signed or notarized by Apple yet, so macOS may
+block the first launch. Open the app once, then go to **System Settings →
+Privacy & Security** and choose **Open Anyway** beside the 10-bit Converter
+notice. Confirm **Open**. This is a one-time step.
+
+![System Settings → Privacy & Security, showing Open Anyway for 10-bit Converter](docs/macos-open-anyway.png)
+
 ## Run or build
 
 The full macOS source/build notes are in [toolkit/README.md](toolkit/README.md).
