@@ -47,12 +47,32 @@
     .reference-graphic img { aspect-ratio:auto; object-fit:contain; }
     .source-note { margin-top:12px; color:var(--muted); font-size:.84rem; }
     .source-note a { color:#cbbcff; text-decoration:underline; text-underline-offset:3px; }
+    .guide { margin-top:54px; padding:clamp(22px,4vw,40px); border:1px solid var(--line); border-radius:20px; background:#14111f; }
+    .guide h2 { margin:0; font-size:clamp(1.7rem,3.5vw,2.7rem); letter-spacing:-.045em; }
+    .guide > p { max-width:760px; color:var(--muted); }
+    .export-table { width:100%; margin-top:24px; border-collapse:collapse; text-align:left; }
+    .export-table th, .export-table td { padding:15px 12px; border-bottom:1px solid var(--line); vertical-align:top; }
+    .export-table th { color:#cbbcff; font-size:.78rem; letter-spacing:.08em; text-transform:uppercase; }
+    .export-table td { color:var(--muted); }
+    .export-table td:first-child { color:var(--ink); font-weight:700; }
+    .pipeline { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-top:24px; }
+    .pipeline-step { position:relative; min-height:128px; padding:20px; border:1px solid var(--line); border-radius:14px; background:#0c0a14; }
+    .pipeline-step:not(:last-child)::after { position:absolute; top:50%; right:-20px; z-index:1; color:#cbbcff; content:"→"; font-size:1.6rem; transform:translateY(-50%); }
+    .pipeline-step small { display:block; margin-bottom:10px; color:#cbbcff; font-weight:700; letter-spacing:.1em; text-transform:uppercase; }
+    .pipeline-step b { display:block; margin-bottom:8px; }
+    .pipeline-step span { color:var(--muted); font-size:.9rem; }
+    .limits { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-top:24px; }
+    .limit { padding:18px; border:1px solid var(--line); border-radius:14px; background:#0c0a14; }
+    .limit b { display:block; margin-bottom:7px; }
+    .limit span { color:var(--muted); font-size:.9rem; }
+    .stack { display:flex; flex-wrap:wrap; gap:9px; margin-top:24px; padding:0; list-style:none; }
+    .stack li { padding:8px 12px; border:1px solid var(--line); border-radius:999px; color:#dcd6ee; font-size:.9rem; }
     .facts { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:1px; margin-top:54px; overflow:hidden; border:1px solid var(--line); border-radius:16px; background:var(--line); }
     .fact { padding:22px; background:#14111f; }
     .fact b { display:block; margin-bottom:5px; font-size:.86rem; }
     .fact span { color:var(--muted); font-size:.9rem; }
     footer { margin-top:44px; color:var(--muted); font-size:.9rem; }
-    @media (max-width:640px) { main { width:min(100% - 28px,1120px); padding-top:34px; } .facts, .bit-facts, .gradient-compare { grid-template-columns:1fr; } .film { border-radius:14px; } .brand-lockup { gap:14px; } }
+    @media (max-width:640px) { main { width:min(100% - 28px,1120px); padding-top:34px; } .facts, .bit-facts, .gradient-compare, .pipeline, .limits { grid-template-columns:1fr; } .film { border-radius:14px; } .brand-lockup { gap:14px; } .pipeline-step:not(:last-child)::after { top:auto; right:auto; bottom:-24px; left:50%; transform:translateX(-50%) rotate(90deg); } .export-table { font-size:.9rem; } .export-table th, .export-table td { padding:12px 8px; } }
   </style>
 </head>
 <body>
@@ -113,6 +133,46 @@
         <figcaption><strong>8-bit versus 10-bit, at a glance</strong>More code values mean smaller changes between adjacent tones.</figcaption>
       </figure>
       <p class="source-note">Important: converting an 8-bit file to 10-bit cannot recover colour information that was never captured. 10-bit Converter reduces visible banding with debanding and dither, then writes a more resilient 10-bit master for the grade or delivery ahead. Facts and reference graphic: <a href="https://daredreamer.com/understanding-8bit-vs-10bit/">Dare Dreamer</a>, <a href="https://unifab.ai/resource/what-is-color-banding">UniFab</a>, and <a href="https://arxiv.org/pdf/2110.08569">Deep Image Debanding</a>. See the full <a href="https://github.com/JazibAli360/10-bit-converter/blob/main/docs/SOURCES.md">source ledger</a>.</p>
+    </section>
+
+    <section class="guide" aria-labelledby="export-heading">
+      <p class="eyebrow">Choose your master</p>
+      <h2 id="export-heading">Which export should I choose?</h2>
+      <table class="export-table">
+        <thead><tr><th>Choose</th><th>Best for</th><th>Trade-off</th></tr></thead>
+        <tbody>
+          <tr><td>HEVC Main10 (.mp4)</td><td>Sharing, review links, and space-conscious delivery.</td><td>Smaller 10-bit files; compatibility still depends on the recipient’s player and hardware.</td></tr>
+          <tr><td>ProRes 4444 (.mov)</td><td>Taking the clip into a colour grade, VFX, or an edit that needs a robust intermediate.</td><td>10-bit 4:4:4 output with much larger files—give it plenty of disk space.</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="guide" aria-labelledby="pipeline-heading">
+      <p class="eyebrow">Under the hood</p>
+      <h2 id="pipeline-heading">A practical cleanup pass, not a magic button.</h2>
+      <div class="pipeline" aria-label="Conversion pipeline">
+        <div class="pipeline-step"><small>01 · Input</small><b>8-bit AI video</b><span>Start with the clip that has visible contour lines, compression stress, or fragile gradients.</span></div>
+        <div class="pipeline-step"><small>02 · Process</small><b>Deband + dither</b><span>FFmpeg smooths harsh steps while controlled dither helps transitions read more naturally.</span></div>
+        <div class="pipeline-step"><small>03 · Output</small><b>10-bit master</b><span>Write HEVC Main10 for compact delivery or ProRes 4444 for a heavier-grade workflow.</span></div>
+      </div>
+    </section>
+
+    <section class="guide" aria-labelledby="limits-heading">
+      <p class="eyebrow">No smoke and mirrors</p>
+      <h2 id="limits-heading">Known limits</h2>
+      <div class="limits">
+        <div class="limit"><b>No invented detail</b><span>It cannot retrieve tones or texture that an 8-bit source never contained.</span></div>
+        <div class="limit"><b>Source still matters</b><span>Heavy compression, bad source gradients, aggressive grading, and platform re-encoding can limit the result.</span></div>
+        <div class="limit"><b>GPU is experimental</b><span>The optional libplacebo/Vulkan path is capability-checked, but the faithful CPU engine is the default release path.</span></div>
+      </div>
+    </section>
+
+    <section class="guide" aria-labelledby="stack-heading">
+      <p class="eyebrow">Built openly</p>
+      <h2 id="stack-heading">Built with</h2>
+      <ul class="stack" aria-label="Technology stack">
+        <li>Python</li><li>PyWebView</li><li>FFmpeg / FFprobe</li><li>libx265 · HEVC Main10</li><li>ProRes 4444</li><li>libplacebo · optional GPU</li><li>Vulkan · optional GPU</li><li>py2app</li>
+      </ul>
     </section>
 
     <section class="first-run" aria-labelledby="first-run-heading">

@@ -56,14 +56,45 @@ playable product page. You can also download the MP4 from the
 - Includes an optional experimental libplacebo/Vulkan GPU engine, which is
   capability-checked before the UI offers it.
 
+## Which export should I choose?
+
+| Export | Choose it for | Trade-off |
+| --- | --- | --- |
+| **HEVC Main10** (`.mp4`) | Sharing, review links, and compact delivery. | Smaller 10-bit files; recipient playback depends on their player and hardware. |
+| **ProRes 4444** (`.mov`) | Colour grading, VFX, or an edit that needs a robust intermediate. | 10-bit 4:4:4 output and much larger files—plan for disk space. |
+
+## The pipeline
+
+```mermaid
+flowchart LR
+    A["8-bit AI video"] --> B["FFmpeg deband + dither"]
+    B --> C["10-bit master"]
+    C --> D["HEVC Main10 · sharing"]
+    C --> E["ProRes 4444 · grading"]
+```
+
+This is a practical cleanup workflow, not a magic-detail model. Debanding and
+dither reduce harsh visible transitions; the result is then encoded as a
+10-bit master for the next stage of post.
+
+## Known limits
+
+- It cannot invent colour values or fine detail that an 8-bit source never had.
+- Results depend on the source, compression damage, the grade, and any later
+  platform re-encoding.
+- The optional libplacebo/Vulkan GPU path is experimental and
+  capability-checked. The faithful CPU engine is the default release path.
+
 ## Tech
 
+Built openly with:
+
 - Python local controller and HTTP server
-- PyWebView native desktop shell
-- HTML/CSS/JavaScript interface
+- PyWebView native desktop shell and HTML/CSS/JavaScript interface
 - FFmpeg / FFprobe conversion and media analysis
 - `libx265` HEVC Main10 and ProRes 4444 exports
 - Optional libplacebo + Vulkan GPU deband path
+- py2app macOS packaging
 
 ## Status
 
