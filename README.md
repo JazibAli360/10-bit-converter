@@ -4,93 +4,81 @@
   <img src="docs/app-icon.png" width="120" alt="10-bit Converter app icon">
 </p>
 
-A local macOS desktop app for making 8-bit AI video easier to grade.
+> A local macOS finishing tool that makes fragile 8-bit gradients easier to
+> live with in post.
 
-AI-generated clips can look great until a smooth sky, shadow, fog layer, or
-skin-tone gradient starts showing obvious colour steps. 10-bit Converter uses
-a deband + dither pass and exports a 10-bit intermediate so those gradients
-look cleaner and are less likely to break further during grading.
+8-bit footage can look completely fine until a sky, wall, fog layer, shadow,
+or skin-tone rolloff starts showing visible steps. 10-bit Converter applies a
+careful deband + dither pass, then writes a true 10-bit master for delivery or
+the grade still ahead.
 
-It does **not** recover colour information that was never present in an
-8-bit source. It is a practical banding-reduction and 10-bit delivery tool,
-not a detail-restoration model.
+**[Download the Mac release](https://github.com/JazibAli360/10-bit-converter/releases/latest)** · **[Watch the product film](https://jazibali360.github.io/10-bit-converter/)** · **[Open an issue](https://github.com/JazibAli360/10-bit-converter/issues)**
 
-## Why 8-bit versus 10-bit matters
+## Start here
 
-Banding is a visible staircase in a gradient that should look smooth. 8-bit
-video has **256 values per colour channel** (about 16.7 million possible RGB
-colours); 10-bit has **1,024 values per channel** (about 1.07 billion RGB
-colours). That extra precision gives grading and delivery more tonal room.
+### What it does
+
+- Reduces the *visibility* of gradient banding / false contouring.
+- Adds controlled dither so smooth tonal transitions read more naturally.
+- Exports HEVC Main10 for compact delivery or ProRes 4444 for a grading master.
+- Runs locally: no accounts, uploads, cloud rendering, or analytics.
+
+### What it does not do
+
+It does not recover colour values, dynamic range, texture, or detail that was
+never in the 8-bit source. It is a practical finishing step—not a black-box
+restoration model or a magic “make it cinematic” button.
+
+### Before you download
+
+The current release is **macOS / Apple Silicon (`arm64`) only**. It is open
+source but not yet signed or notarized by Apple, so macOS may block the first
+launch.
+
+1. Try opening **10-bit Converter** once.
+2. Go to **System Settings → Privacy & Security**.
+3. Select **Open Anyway** next to the 10-bit Converter notice, then confirm
+   **Open**. This is a one-time step.
+
+![macOS Privacy & Security showing the Open Anyway button for 10-bit Converter](docs/macos-open-anyway.png)
+
+## Choose the right export
+
+| Export | Use it when | Keep in mind |
+| --- | --- | --- |
+| **HEVC Main10** (`.mp4`) | You need a smaller 10-bit file for sharing, review, or delivery. | Playback support still depends on the recipient’s player and hardware. |
+| **ProRes 4444** (`.mov`) | You are taking the clip into a grade, edit, or VFX workflow. | It is a robust 10-bit 4:4:4 intermediate, and the files are very large. |
+
+## What problem it solves
+
+Banding is the visible staircase in a gradient that should feel continuous.
+An 8-bit channel has **256 values**; a 10-bit channel has **1,024**. More
+tonal steps do not resurrect lost source data, but they give the cleanup and
+the next stage of post more room to behave.
 
 ![Illustrative split view of a posterized blue sky and a smoother blue sky](docs/banding-explainer-original.png)
 
-*Original project illustration: a visual explanation of the cleanup goal, not
-a measured output test.*
+*Original project illustration. It explains the cleanup goal; it is not a
+measured output test.*
 
 | Visible 8-bit-style banding | Debanded + dithered 10-bit master |
 | --- | --- |
 | ![Blue gradient with visible colour bands](docs/gradient-banded.png) | ![Blue gradient with smoother transitions after debanding and dither](docs/gradient-treated.png) |
-| Steps become obvious in smooth skies and shadows. | Dither breaks up hard contour lines so transitions read more naturally. |
+| Smooth skies and shadows can break into obvious steps. | Fine dither breaks up harsh contours so transitions read more naturally. |
 
-### The places creators notice it
+### Where creators tend to notice it
 
 | Skin-tone rolloff | Fog and atmosphere | Shadows and interiors |
 | --- | --- | --- |
 | ![Photorealistic illustrative close-up with banded skin tones left and smoother tones right](docs/use-case-skin-tones.png) | ![Photorealistic illustrative foggy landscape with banding left and smoother fog right](docs/use-case-fog-gradients.png) | ![Photorealistic illustrative dark room with banded shadows left and smoother shadows right](docs/use-case-shadow-gradients.png) |
-| Soft cheek, temple, and key-light transitions can expose posterization. | Large low-texture gradients make contour lines particularly obvious. | Lifted blacks and compressed dark areas can turn a rolloff into stripes. |
+| Soft cheek, temple, and key-light transitions can expose posterization. | Large low-texture gradients make contour lines easy to see. | Lifted blacks and compressed dark areas can turn a rolloff into stripes. |
 
-*These are original photorealistic illustrative use cases, generated for this
-project. They explain the problem; they are not measured output tests or
-claims about specific real footage.*
-
-Converting an 8-bit file to 10-bit cannot restore colour detail that was
-never in the source. The app reduces visible banding and writes a more
-resilient 10-bit master; it does not claim to invent missing detail.
+*These are original photorealistic illustrative use cases generated for this
+project—not measured output tests or claims about specific real footage.*
 
 ![Reference illustration comparing 8-bit and 10-bit gradients](docs/8bit-vs-10bit-unifab.avif)
 
-Reference visual: [UniFab — Color Banding in Video](https://unifab.ai/resource/what-is-color-banding). Bit-depth context: [Dare Dreamer](https://daredreamer.com/understanding-8bit-vs-10bit/) and [Deep Image Debanding](https://arxiv.org/pdf/2110.08569). Full attributions are in [docs/SOURCES.md](docs/SOURCES.md).
-
-### Where banding tends to show up
-
-| Skies | Fog, walls, and broad gradients | Shadows and lifted blacks |
-| --- | --- | --- |
-| Smooth horizon fades can reveal contour lines after a grade. | Low-texture areas make discrete tonal steps easy to see. | Compression and heavy grading can turn a gentle rolloff into stripes. |
-
-## Product film
-
-**[▶ Play the 10-bit Converter product film](https://jazibali360.github.io/10-bit-converter/)**
-
-GitHub README files do not support inline MP4 playback, so the film has its own
-playable product page. You can also download the MP4 from the
-[current GitHub Release](https://github.com/JazibAli360/10-bit-converter/releases/latest).
-
-## Privacy and security
-
-**Your footage stays on your Mac.** The app processes the files you choose
-locally: no accounts, uploads, cloud rendering, or analytics. The interface
-communicates only with the local Python controller on `127.0.0.1`, which runs
-the bundled FFmpeg tools on your machine.
-
-## What it does
-
-- Processes videos locally — no uploads, accounts, or cloud rendering.
-- Queues individual videos or folders and keeps each output beside its source
-  (or in a chosen output directory).
-- Produces HEVC Main10 for smaller delivery files or ProRes 4444 for grading.
-- Applies configurable FFmpeg deband, dither, denoise, deflicker, and
-  colour-management settings.
-- Provides preflight checks, cancellation, per-file progress, output safety,
-  conversion history, scopes, filmstrips, and before/after comparison tools.
-- Includes an optional experimental libplacebo/Vulkan GPU engine, which is
-  capability-checked before the UI offers it.
-
-## Which export should I choose?
-
-| Export | Choose it for | Trade-off |
-| --- | --- | --- |
-| **HEVC Main10** (`.mp4`) | Sharing, review links, and compact delivery. | Smaller 10-bit files; recipient playback depends on their player and hardware. |
-| **ProRes 4444** (`.mov`) | Colour grading, VFX, or an edit that needs a robust intermediate. | 10-bit 4:4:4 output and much larger files—plan for disk space. |
+Reference visual: [UniFab — Color Banding in Video](https://unifab.ai/resource/what-is-color-banding). Bit-depth context: [Dare Dreamer](https://daredreamer.com/understanding-8bit-vs-10bit/) and [Deep Image Debanding](https://arxiv.org/pdf/2110.08569). See the [full source ledger](docs/SOURCES.md).
 
 ## Tested result
 
@@ -98,159 +86,96 @@ the bundled FFmpeg tools on your machine.
 | --- | --- | --- | --- | --- |
 | Apple M3 MacBook | 18 GB | 15-second clip → 30-second export | ProRes 4444 | ≈0.5× real time |
 
-This is one observed release test, included to set expectations rather than as
-a performance guarantee. Resolution and source codec, deband settings,
-destination storage, system load, and selected engine all affect export time.
+This is one observed release test, included to set expectations—not a
+performance guarantee. Source resolution/codec, settings, destination storage,
+system load, and the selected engine all affect export time.
 
-## The pipeline
+## Privacy, plainly
+
+Your footage stays on your Mac. The app processes only the files you choose.
+The interface talks to a local Python controller on `127.0.0.1`, which runs
+the bundled FFmpeg tools on your machine. There are no accounts, telemetry,
+uploads, or cloud-rendering path in the app.
+
+## For the curious: how it works
 
 ```mermaid
 flowchart LR
-    A["8-bit AI video"] --> B["FFmpeg deband + dither"]
+    A["8-bit source video"] --> B["FFmpeg deband + controlled dither"]
     B --> C["10-bit master"]
     C --> D["HEVC Main10 · sharing"]
     C --> E["ProRes 4444 · grading"]
 ```
 
-This is a practical cleanup workflow, not a magic-detail model. Debanding and
-dither reduce harsh visible transitions; the result is then encoded as a
-10-bit master for the next stage of post.
-
-## App architecture
-
 ```mermaid
 flowchart LR
-    UI["PyWebView app interface"] --> Controller["Python local controller\n127.0.0.1 only"]
+    UI["PyWebView app interface"] --> Controller["Local Python controller\n127.0.0.1 only"]
     Controller --> Engine{"Conversion engine"}
-    Engine --> CPU["FFmpeg CPU deband + dither"]
-    Engine --> GPU["Optional FFmpeg + libplacebo/Vulkan GPU"]
-    CPU --> Output["HEVC Main10 or ProRes 4444 master"]
+    Engine --> CPU["Faithful FFmpeg CPU deband"]
+    Engine --> GPU["Optional libplacebo / Vulkan GPU path"]
+    CPU --> Output["Verified output file"]
     GPU --> Output
 ```
 
-The CPU engine is the default release path. The GPU engine is optional and is
-offered only after its local capability check passes.
+The CPU engine is the default release path. The optional GPU path is
+experimental and appears only after its local capability check passes.
 
-## Known limits
+### Common questions
 
-- It cannot invent colour values or fine detail that an 8-bit source never had.
-- Results depend on the source, compression damage, the grade, and any later
-  platform re-encoding.
-- The optional libplacebo/Vulkan GPU path is experimental and
-  capability-checked. The faithful CPU engine is the default release path.
+**Does it create real 10-bit video?** Yes. It writes 10-bit HEVC Main10 or
+10-bit 4:4:4 ProRes output. It does not recreate tones missing from the
+original 8-bit clip.
 
-## FAQ
+**Why is my file huge?** ProRes 4444 is built for a robust grading
+intermediate, not compact delivery. Choose HEVC Main10 when size matters.
 
-### Does this create real 10-bit video?
+**Why is it slow?** Debanding, dithering, high-quality processing, two-pass
+delivery, and ProRes all cost time. Clip length, resolution, storage, and
+hardware matter too.
 
-Yes. It encodes a 10-bit HEVC Main10 or 10-bit 4:4:4 ProRes master. It does
-not reconstruct lost tonal information from an 8-bit original; it reduces
-visible banding and makes a cleaner master for subsequent post-production.
+**Will it fix every clip?** No. Severe compression, pre-existing
+posterization, aggressive grades, and later platform re-encoding can still
+show banding. Start with the gentlest setting that solves the visible issue.
 
-### Why is my file huge?
+## Open source: fork it, improve it, tell me what breaks
 
-ProRes 4444 is a robust grading intermediate, not a compact delivery file. Use
-HEVC Main10 when size and sharing matter more than edit-friendly 4:4:4 output.
+The most useful support is real feedback: a troublesome gradient, a workflow
+the app should handle better, or a hardware note that helps the next creator.
+Open a [GitHub Issue](https://github.com/JazibAli360/10-bit-converter/issues)
+with the app version, macOS version, input codec/resolution, chosen export
+profile, and relevant error text. Please do not upload private footage or
+credentials.
 
-### Why is it slow?
+- Start a fork with [AGENTS.md](AGENTS.md), the [brand guide](docs/BRAND.md),
+  and the [product story](docs/PRODUCT_STORY.md).
+- Read the [Code of Conduct](CODE_OF_CONDUCT.md) before participating.
+- Security reports have their own guidance in [SECURITY.md](SECURITY.md). Do
+  not post sensitive details in a public issue.
 
-Debanding, dithering, high-quality processing, two-pass delivery, and ProRes
-all cost time. Resolution, clip duration, storage speed, and available CPU/GPU
-performance affect export speed too.
+### Windows is an open invitation
 
-### Will it fix every clip?
-
-No. Severe compression, existing posterization, aggressive grades, and later
-platform re-encoding can still show banding. Test a short preview and choose
-the gentlest setting that solves the visible issue.
-
-## Tech
-
-Built openly with:
-
-- Python local controller and HTTP server
-- PyWebView native desktop shell and HTML/CSS/JavaScript interface
-- FFmpeg / FFprobe conversion and media analysis
-- `libx265` HEVC Main10 and ProRes 4444 exports
-- Optional libplacebo + Vulkan GPU deband path
-- py2app macOS packaging
-
-## Collaborate, support, or give feedback
-
-The most useful support is real-world footage and honest feedback. Open a
-[GitHub Issue](https://github.com/JazibAli360/10-bit-converter/issues) for a
-bug, a feature idea, GPU compatibility notes, or a workflow the app should
-handle better. For a useful bug report, include the app version, macOS version,
-input codec/resolution, selected export profile, and the relevant error text—
-never upload private footage or credentials.
-
-Want to fork or contribute? Start with [AGENTS.md](AGENTS.md), the
-[brand guide](docs/BRAND.md), and the [source ledger](docs/SOURCES.md).
-
-Please read the [Code of Conduct](CODE_OF_CONDUCT.md) before participating.
-Security issues have their own private-reporting guidance in
-[SECURITY.md](SECURITY.md); do not disclose sensitive details in a public
-issue.
-
-## Status
-
-The current packaged release target is Apple Silicon macOS. Windows build and
-GPU packaging tooling lives in [`.windows/`](.windows/), but a final Windows
-installer needs to be built and validated on Windows hardware.
-
-**Windows is an open invitation.** I do not currently have access to a Windows
-machine, so the Windows build is incomplete and there is no validated Windows
-release. If you do have a Windows machine, you are welcome to make your own
-build, test it, improve it, or take the work further. Start with the
-[Windows build notes](.windows/README.md) or hand the copy-ready
+I do not currently have access to a Windows machine, so the Windows build is
+incomplete and there is no validated Windows release. If you do have one,
+please feel free to build it, test it, improve it, or take it further. Start
+with the [Windows build notes](.windows/README.md) or hand the copy-ready
 [agent brief](.windows/AGENT_BUILD.md) to an AI coding agent on Windows x64.
 
-## Downloads and product film
+## Technical notes
 
-Download the current macOS build and watch the product film from the
-[GitHub Releases page](https://github.com/JazibAli360/10-bit-converter/releases).
-The release asset is an Apple Silicon (`arm64`) macOS app archive.
-
-### First launch on macOS
-
-This open-source build is not signed or notarized by Apple yet, so macOS may
-block the first launch. Open the app once, then go to **System Settings →
-Privacy & Security** and choose **Open Anyway** beside the 10-bit Converter
-notice. Confirm **Open**. This is a one-time step.
-
-![System Settings → Privacy & Security, showing Open Anyway for 10-bit Converter](docs/macos-open-anyway.png)
-
-## Run or build
-
-The full macOS source/build notes are in [toolkit/README.md](toolkit/README.md).
-
-Want a Windows build? Start with [`.windows/README.md`](.windows/README.md),
-or hand the copy-ready brief in [`.windows/AGENT_BUILD.md`](.windows/AGENT_BUILD.md)
-to an AI coding agent on a Windows x64 machine.
-
-## Forking, agents, and brand context
-
-- Start with [AGENTS.md](AGENTS.md) for architecture, safety constraints, and
-  verification requirements.
-- Use [docs/BRAND.md](docs/BRAND.md) for honest product language, visual
-  direction, attribution, and release copy.
-- Use [docs/PRODUCT_STORY.md](docs/PRODUCT_STORY.md) and
-  [docs/SOURCES.md](docs/SOURCES.md) for the credited case-study narrative,
-  research ledger, and product-film guidance.
-
-The repository intentionally excludes packaged `.app` bundles, FFmpeg binaries,
-test videos, and other large local artifacts. Add your own redistributable
-FFmpeg/FFprobe binaries when building a standalone app, and follow their
-licensing requirements.
+Built with Python, PyWebView, HTML/CSS/JavaScript, FFmpeg/FFprobe, `libx265`,
+ProRes 4444 output, and optional libplacebo/Vulkan. Core conversion behaviour
+has regression tests; the repository deliberately excludes `.app` bundles,
+FFmpeg binaries, test videos, and other large local artifacts. Follow the
+relevant FFmpeg licensing when making a standalone build.
 
 ## License
 
-This project is released under the [MIT License](LICENSE). Use it, change it,
-learn from it, ship it inside another project, or make something much better
-with it. Keep the license notice with substantial copies of the code.
+Released under the [MIT License](LICENSE). Use it, change it, learn from it,
+ship it inside another project, or make something much better with it—just
+keep the license notice with substantial copies.
 
-## A quick honest note
+---
 
-This was vibe-coded into a genuinely useful tool. The core conversion flow has
-regression tests, but please review it for your own production use, open an
-issue if something is off, and send improvements back if you feel like it.
+Built quickly with agent-assisted development, then tested as a real local
+tool. Please review it for your own production use, report anything odd, and
+send improvements back if you feel like it.
