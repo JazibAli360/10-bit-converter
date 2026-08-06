@@ -70,6 +70,16 @@ the bundled FFmpeg tools on your machine.
 | **HEVC Main10** (`.mp4`) | Sharing, review links, and compact delivery. | Smaller 10-bit files; recipient playback depends on their player and hardware. |
 | **ProRes 4444** (`.mov`) | Colour grading, VFX, or an edit that needs a robust intermediate. | 10-bit 4:4:4 output and much larger files—plan for disk space. |
 
+## Tested result
+
+| Test machine | Unified memory | Source → export | Output | Observed speed |
+| --- | --- | --- | --- | --- |
+| Apple M3 MacBook | 18 GB | 15-second clip → 30-second export | ProRes 4444 | ≈0.5× real time |
+
+This is one observed release test, included to set expectations rather than as
+a performance guarantee. Resolution and source codec, deband settings,
+destination storage, system load, and selected engine all affect export time.
+
 ## The pipeline
 
 ```mermaid

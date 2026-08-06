@@ -67,6 +67,10 @@
     .limit span { color:var(--muted); font-size:.9rem; }
     .stack { display:flex; flex-wrap:wrap; gap:9px; margin-top:24px; padding:0; list-style:none; }
     .stack li { padding:8px 12px; border:1px solid var(--line); border-radius:999px; color:#dcd6ee; font-size:.9rem; }
+    .benchmarks { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-top:24px; }
+    .benchmark { padding:18px; border:1px solid var(--line); border-radius:14px; background:#0c0a14; }
+    .benchmark b { display:block; margin-bottom:7px; color:#cbbcff; font-size:1.35rem; letter-spacing:-.04em; }
+    .benchmark span { color:var(--muted); font-size:.86rem; }
     .privacy { margin-top:32px; padding:22px; border:1px solid rgba(167,139,250,.36); border-radius:16px; background:linear-gradient(110deg,rgba(93,59,209,.22),rgba(7,21,53,.6)); }
     .privacy h2 { margin:0 0 8px; font-size:clamp(1.35rem,2.5vw,1.85rem); letter-spacing:-.035em; }
     .privacy p { max-width:760px; margin:0; color:#ded8ee; }
@@ -84,7 +88,7 @@
     .fact b { display:block; margin-bottom:5px; font-size:.86rem; }
     .fact span { color:var(--muted); font-size:.9rem; }
     footer { margin-top:44px; color:var(--muted); font-size:.9rem; }
-    @media (max-width:640px) { main { width:min(100% - 28px,1120px); padding-top:34px; } .facts, .bit-facts, .gradient-compare, .pipeline, .limits, .architecture { grid-template-columns:1fr; } .film { border-radius:14px; } .brand-lockup { gap:14px; } .pipeline-step:not(:last-child)::after, .architecture-step:not(:last-child)::after { top:auto; right:auto; bottom:-24px; left:50%; transform:translateX(-50%) rotate(90deg); } .export-table { font-size:.9rem; } .export-table th, .export-table td { padding:12px 8px; } }
+    @media (max-width:640px) { main { width:min(100% - 28px,1120px); padding-top:34px; } .facts, .bit-facts, .gradient-compare, .pipeline, .limits, .architecture, .benchmarks { grid-template-columns:1fr; } .film { border-radius:14px; } .brand-lockup { gap:14px; } .pipeline-step:not(:last-child)::after, .architecture-step:not(:last-child)::after { top:auto; right:auto; bottom:-24px; left:50%; transform:translateX(-50%) rotate(90deg); } .export-table { font-size:.9rem; } .export-table th, .export-table td { padding:12px 8px; } }
   </style>
 </head>
 <body>
@@ -162,6 +166,18 @@
           <tr><td>ProRes 4444 (.mov)</td><td>Taking the clip into a colour grade, VFX, or an edit that needs a robust intermediate.</td><td>10-bit 4:4:4 output with much larger files—give it plenty of disk space.</td></tr>
         </tbody>
       </table>
+    </section>
+
+    <section class="guide" aria-labelledby="benchmark-heading">
+      <p class="eyebrow">Observed release benchmark</p>
+      <h2 id="benchmark-heading">A quick real-world ProRes run.</h2>
+      <div class="benchmarks" aria-label="ProRes 4444 benchmark">
+        <div class="benchmark"><b>M3 MacBook</b><span>Apple Silicon test machine</span></div>
+        <div class="benchmark"><b>18 GB</b><span>Unified memory</span></div>
+        <div class="benchmark"><b>15 sec → 30 sec</b><span>Source duration → export time</span></div>
+        <div class="benchmark"><b>≈0.5× real time</b><span>ProRes 4444 output</span></div>
+      </div>
+      <p class="source-note">One observed release test, shared to set expectations—not a guaranteed benchmark. Export time varies with source resolution/codec, deband settings, destination storage, background load, and the selected engine.</p>
     </section>
 
     <section class="guide" aria-labelledby="pipeline-heading">

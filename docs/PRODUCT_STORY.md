@@ -1,5 +1,13 @@
 # Product story and case-study guidance
 
+## Observed release benchmark
+
+On an Apple M3 MacBook with 18 GB unified memory, one 15-second clip exported
+to ProRes 4444 in approximately 30 seconds (about 0.5× real time). This is an
+observed release test, not a performance guarantee: source resolution/codec,
+deband settings, storage, system load, and engine selection will affect the
+result.
+
 ## Positioning
 
 10-bit Converter is a local Apple-Silicon macOS tool that reduces visible
