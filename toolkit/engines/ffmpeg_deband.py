@@ -28,16 +28,23 @@ class FFmpegDebandEngine:
         deflicker = options.get("deflicker", False)
         max_quality = options.get("max_quality", False)
         denoise = options.get("denoise", "off")
+        colour_safe = options.get("colour_safe", False)
         denoise_filters = {"light": "hqdn3d=2:1:2:3", "medium": "hqdn3d=4:3:6:6"}
         chain = ""
         if denoise in denoise_filters:
             chain += denoise_filters[denoise] + ","
         if deflicker:
             chain += "deflicker,"
-        if max_quality:
+        if max_quality or colour_safe:
             chain += "format=yuv444p16le,"
-        chain += (f"deband=1thr={threshold}:2thr={threshold}:3thr={threshold}:"
+        chroma_threshold = str(float(threshold) * 0.60) if colour_safe else threshold
+        chain += (f"deband=1thr={threshold}:2thr={chroma_threshold}:3thr={chroma_threshold}:"
                   f"range={rng}:blur={1 if blur else 0},noise=alls={dither}:allf=t+u")
+        if colour_safe:
+            # A fixed pattern avoids temporal randomization, while zscale's
+            # error diffusion makes the final 16-bit → 10-bit reduction less
+            # prone to coloured contour steps.
+            chain = chain.replace("allf=t+u", "allf=p") + ",zscale=dither=error_diffusion"
         return chain + f",format={pix_fmt}"
 
     def availability(self, ffmpeg_path="ffmpeg"):

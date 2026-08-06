@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 import server
 from conversion_runner import run_ffmpeg
-from conversion_service import ConversionPlanner
+from conversion_service import ConversionPlanner, EXPORT_PROVENANCE
 from history_store import append_report, read_reports
 from preflight import estimate_export_bytes as estimate_export_bytes_pure
 from preview_service import PreviewService
@@ -149,6 +149,27 @@ class ExportSafetyTests(unittest.TestCase):
             service.cleanup()
             self.assertFalse(os.path.exists(artifact_dir))
 
+    def test_preview_service_replaces_old_artifacts_and_caps_processed_samples(self):
+        with tempfile.TemporaryDirectory() as folder:
+            service = PreviewService(folder, lambda path: path, DEFAULT_ENGINE,
+                                     lambda *args: "null", lambda *args: "null")
+            first = os.path.join(folder, "first")
+            second = os.path.join(folder, "second")
+            os.makedirs(first); os.makedirs(second)
+            service._artifacts["scope"] = {"one": first, "two": second}
+            service._clear_kind("scope")
+            self.assertFalse(os.path.exists(first))
+            self.assertFalse(os.path.exists(second))
+            for index in range(4):
+                sample = os.path.join(folder, f"sample-{index}.mp4")
+                with open(sample, "wb") as handle:
+                    handle.write(b"sample")
+                service._samples.append(sample)
+            stale = service._samples.pop(0)
+            os.remove(stale)
+            self.assertEqual(len(service._samples), 3)
+            self.assertFalse(os.path.exists(stale))
+
     def test_engine_contract_keeps_custom_and_named_deband_strengths_stable(self):
         self.assertTrue(DEFAULT_ENGINE.capabilities.local_only)
         self.assertEqual(DEFAULT_ENGINE.threshold_for("Medium", "0.031"), "0.02")
@@ -160,6 +181,28 @@ class ExportSafetyTests(unittest.TestCase):
             "4", "yuv420p10le", iterations=2, radius=16, grain=5,
         ))
         self.assertEqual(pixfmt_bits("yuv420p10le"), 10)
+
+    def test_ai_colour_safe_pipeline_is_high_precision_chroma_aware_and_stable(self):
+        filters = DEFAULT_ENGINE.build_filter_chain(
+            "0.02", "yuv420p10le", range=16, blur=True, dither=2, colour_safe=True,
+        )
+        self.assertIn("format=yuv444p16le", filters)
+        self.assertIn("2thr=0.012", filters)
+        self.assertIn("allf=p", filters)
+        self.assertIn("zscale=dither=error_diffusion", filters)
+        planner = ConversionPlanner("/tmp/intake", DEFAULT_ENGINE.strength_thresholds, DEFAULT_ENGINE)
+        with patch("conversion_service.probe_colour_metadata", return_value={}):
+            plan = planner.plan({"path": "/clip.mp4"}, "HEVC (smaller, delivery)", "Medium", "Quality (CRF)",
+                                {"crf": 18, "deband_range": 16, "deband_blur": True, "dither": 2,
+                                 "thr_custom": "0.03", "max_quality": True, "denoise": "off", "deflicker": False,
+                                 "audio": "copy", "colour_safe": True, "source_interpretation": "rec709_limited"},
+                                DEFAULT_ENGINE)
+        self.assertIn("-color_primaries", plan["colour"])
+        self.assertEqual(plan["colour_encoder"][0], "-x265-params")
+        self.assertIn("colorprim=bt709", plan["colour_encoder"][1])
+        self.assertIn("transfer=bt709", plan["colour_encoder"][1])
+        self.assertIn("colormatrix=bt709", plan["colour_encoder"][1])
+        self.assertIn("AI Colour-Safe", plan["profile"])
 
     def test_optional_libplacebo_is_capability_gated(self):
         class Result:
@@ -244,6 +287,9 @@ class ExportSafetyTests(unittest.TestCase):
     def test_stream_map_keeps_primary_video_all_audio_and_metadata(self):
         self.assertEqual(server.stream_map_args(), [
             "-map", "0:v:0", "-map", "0:a?", "-map_metadata", "0", "-map_chapters", "0",
+        ])
+        self.assertEqual(ConversionPlanner.provenance_args(), [
+            "-metadata", f"comment={EXPORT_PROVENANCE}",
         ])
 
     def test_preflight_blocks_unwritable_or_missing_source(self):
@@ -442,9 +488,11 @@ class ExportSafetyTests(unittest.TestCase):
             server.DEFAULT_SETTINGS, lambda mode: "hevc"), 7_800_000)
         with tempfile.TemporaryDirectory() as folder:
             path = os.path.join(folder, "history.jsonl")
-            append_report(path, {"id": "r1", "items": [{"source": "/tmp/a", "output": "/tmp/b"}]})
+            append_report(path, {"id": "r1", "items": [{"source": "/tmp/a", "output": "/tmp/b"}]}, limit=2)
+            append_report(path, {"id": "r2", "items": []}, limit=2)
+            append_report(path, {"id": "r3", "items": []}, limit=2)
             records = read_reports(path, authorize_path=lambda value: value)
-        self.assertEqual(records[0]["id"], "r1")
+        self.assertEqual([record["id"] for record in records], ["r3", "r2"])
 
 
 if __name__ == "__main__":

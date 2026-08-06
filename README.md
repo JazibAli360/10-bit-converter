@@ -49,6 +49,19 @@ launch.
 | **HEVC Main10** (`.mp4`) | You need a smaller 10-bit file for sharing, review, or delivery. | Playback support still depends on the recipient’s player and hardware. |
 | **ProRes 4444** (`.mov`) | You are taking the clip into a grade, edit, or VFX workflow. | It is a robust 10-bit 4:4:4 intermediate, and the files are very large. |
 
+### Optional: AI Footage Colour-Safe
+
+This opt-in profile is for clips where synthetic skies, skin rolloffs, fog, or
+dark gradients still look delicate after a normal deband pass. It works in a
+high-precision 4:4:4 intermediate, treats chroma more gently than luma, uses
+a stable dither pattern, and error-diffuses the final 10-bit reduction. It is
+slower than the default **Faithful 10-bit** profile.
+
+It still does not invent missing colour values or texture. Leave **Source
+intent** on *Preserve tags / appearance* unless you know the clip is Rec.709
+limited-range or sRGB full-range; those choices only tell the export how to
+label known SDR material.
+
 ## What problem it solves
 
 Banding is the visible staircase in a gradient that should feel continuous.
@@ -101,6 +114,11 @@ The only optional network activity is update metadata: once every seven days,
 the app asks GitHub Releases whether a newer public version exists. It sends no
 footage or account data, never downloads or installs an update automatically,
 and always leaves the decision to you.
+
+Every export also carries the standard file comment **“Processed with 10-bit
+Converter by Jazib Ali 360”**. The app preserves the source metadata map, but
+this intentionally replaces any pre-existing `comment` field with a clear
+processing note.
 
 ## For the curious: how it works
 

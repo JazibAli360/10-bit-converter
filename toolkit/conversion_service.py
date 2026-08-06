@@ -4,13 +4,14 @@ import os
 import subprocess
 
 from media_probe import (pixfmt_bits, probe_audio_codec, probe_bitrate_kbps,
-                         probe_duration, probe_pix_fmt, probe_subtitle_codecs)
+                         probe_colour_metadata, probe_duration, probe_pix_fmt, probe_subtitle_codecs)
 
 
 MP4_COPY_AUDIO = {"aac", "mp3", "ac3", "eac3"}
 VALID_MODES = {"HEVC (smaller, delivery)", "H.264 (10-bit, delivery)",
                "ProRes 4444 (grading, huge file)"}
 VALID_RATES = {"Match source", "Quality (CRF)", "Custom"}
+EXPORT_PROVENANCE = "Processed with 10-bit Converter by Jazib Ali 360"
 
 
 class ConversionPlanner:
@@ -59,6 +60,11 @@ class ConversionPlanner:
         return ["-map", "0:v:0", "-map", "0:a?", "-map_metadata", "0", "-map_chapters", "0"]
 
     @staticmethod
+    def provenance_args():
+        """Add a human-readable, portable note without removing source metadata."""
+        return ["-metadata", f"comment={EXPORT_PROVENANCE}"]
+
+    @staticmethod
     def subtitle_args(input_path):
         codecs = probe_subtitle_codecs(input_path)
         if not codecs:
@@ -79,15 +85,16 @@ class ConversionPlanner:
         return ["-c:a", "aac", "-b:a", "192k"]
 
     @staticmethod
-    def colour_args(input_path):
-        try:
-            output = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries",
-                                     "stream=color_primaries,color_transfer,color_space,color_range", "-of",
-                                     "default=noprint_wrappers=1:nokey=0", input_path], capture_output=True,
-                                    text=True, check=True).stdout
-        except Exception:
-            return []
-        values = dict(line.split("=", 1) for line in output.splitlines() if "=" in line)
+    def colour_args(input_path, source_interpretation="preserve"):
+        values = probe_colour_metadata(input_path)
+        assumptions = {
+            "rec709_limited": {"color_primaries": "bt709", "color_transfer": "bt709",
+                                "color_space": "bt709", "color_range": "tv"},
+            "srgb_full": {"color_primaries": "bt709", "color_transfer": "iec61966-2-1",
+                          "color_space": "bt709", "color_range": "pc"},
+        }
+        if source_interpretation in assumptions:
+            values = assumptions[source_interpretation]
         invalid, args = {"", "unknown", "N/A", "reserved"}, []
         for key, flag in (("color_primaries", "-color_primaries"), ("color_transfer", "-color_trc"),
                           ("color_space", "-colorspace")):
@@ -96,6 +103,20 @@ class ConversionPlanner:
         if values.get("color_range") in {"tv", "pc", "limited", "full"}:
             args.extend(("-color_range", values["color_range"]))
         return args
+
+    @staticmethod
+    def colour_encoder_args(kind, colour_args):
+        """Write supported SDR colour tags into the encoded video bitstream."""
+        values = dict(zip(colour_args[::2], colour_args[1::2]))
+        primary = values.get("-color_primaries")
+        transfer = values.get("-color_trc")
+        matrix = values.get("-colorspace")
+        if not (primary and transfer and matrix):
+            return []
+        range_name = {"tv": "limited", "pc": "full", "limited": "limited", "full": "full"}.get(
+            values.get("-color_range"), "limited")
+        params = f"colorprim={primary}:transfer={transfer}:colormatrix={matrix}:range={range_name}"
+        return (["-x265-params", params] if kind == "hevc" else ["-x264-params", params])
 
     @staticmethod
     def rate_args(rate, settings, input_path):
@@ -127,19 +148,24 @@ class ConversionPlanner:
                                                 blur=item_settings["deband_blur"], dither=item_settings["dither"],
                                                 deflicker=item_settings.get("deflicker", False),
                                                 max_quality=item_settings.get("max_quality", False),
-                                                denoise=item_settings.get("denoise", "off"))
+                                                denoise=item_settings.get("denoise", "off"),
+                                                colour_safe=item_settings.get("colour_safe", False))
         else:
             filters = engine.build_filter_chain(threshold, pixel_format, iterations=2, radius=16, grain=5)
         input_path = item["path"]
         streams = [*self.stream_map_args(), *self.subtitle_args(input_path)[0]]
         audio = self.audio_args(input_path, is_prores, item_settings.get("audio", "copy"))
-        colour = self.colour_args(input_path)
+        colour = self.colour_args(input_path, item_settings.get("source_interpretation", "preserve"))
+        colour_encoder = self.colour_encoder_args(kind, colour) if not is_prores else []
         rate_arguments = [] if is_prores else self.rate_args(rate, item_settings, input_path)
         source_bits = pixfmt_bits(probe_pix_fmt(input_path))
         profile = f"{self.format_label(mode)} · {strength} deband"
+        if item_settings.get("colour_safe"):
+            profile += " · AI Colour-Safe"
         profile += " · codec-managed" if is_prores else f" · {rate}"
         return {"mode": mode, "strength": strength, "rate": rate, "override": override, "settings": item_settings,
                 "kind": kind, "is_prores": is_prores, "filters": filters, "streams": streams, "audio": audio,
                 "colour": colour, "rate_args": rate_arguments, "source_bits": source_bits,
+                "colour_encoder": colour_encoder, "provenance": self.provenance_args(),
                 "duration": probe_duration(input_path), "profile": profile,
                 "subtitle_note": self.subtitle_args(input_path)[1]}

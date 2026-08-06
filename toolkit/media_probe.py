@@ -63,6 +63,22 @@ def probe_pix_fmt(path):
         return ""
 
 
+def probe_colour_metadata(path):
+    """Return only usable stream colour tags; never guess missing metadata."""
+    keys = ("color_primaries", "color_transfer", "color_space", "color_range")
+    try:
+        out = subprocess.run(
+            ["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries",
+             "stream=" + ",".join(keys), "-of", "json", path],
+            capture_output=True, text=True, check=True,
+        ).stdout
+        stream = (json.loads(out).get("streams") or [{}])[0]
+        invalid = {"", "unknown", "N/A", "reserved", None}
+        return {key: stream.get(key, "") for key in keys if stream.get(key) not in invalid}
+    except Exception:
+        return {}
+
+
 def probe_audio_codec(path):
     try:
         return subprocess.run(
@@ -91,7 +107,7 @@ def probe_info(path):
     try:
         out = subprocess.run(
             ["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries",
-             "stream=width,height,pix_fmt,avg_frame_rate,codec_name:format=duration,bit_rate",
+             "stream=width,height,pix_fmt,avg_frame_rate,codec_name,color_primaries,color_transfer,color_space,color_range:format=duration,bit_rate",
              "-of", "json", path], capture_output=True, text=True, check=True,
         ).stdout
         data = json.loads(out)
@@ -111,12 +127,14 @@ def probe_info(path):
             numerator, denominator = frame_rate.split("/")
             fps = float(numerator) / float(denominator or 0) if float(denominator or 0) else 0.0
         pix_fmt = stream.get("pix_fmt", "")
+        colour = {key: stream.get(key, "") for key in
+                  ("color_primaries", "color_transfer", "color_space", "color_range")}
         return {
             "dur": round(duration, 2), "kbps": kbps, "size": os.path.getsize(path),
             "width": stream.get("width", 0), "height": stream.get("height", 0),
             "fps": round(fps, 2), "pix_fmt": pix_fmt,
-            "codec": stream.get("codec_name", ""), "bits": pixfmt_bits(pix_fmt),
+            "codec": stream.get("codec_name", ""), "bits": pixfmt_bits(pix_fmt), "colour": colour,
         }
     except Exception:
         return {"dur": 0, "kbps": 0, "size": 0, "width": 0, "height": 0,
-                "fps": 0, "pix_fmt": "", "codec": "", "bits": 0}
+                "fps": 0, "pix_fmt": "", "codec": "", "bits": 0, "colour": {}}

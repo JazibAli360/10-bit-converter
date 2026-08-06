@@ -7,6 +7,7 @@ generated files through its own capability-checked routes.
 
 import math
 import os
+import shutil
 import struct
 import subprocess
 import tempfile
@@ -26,6 +27,14 @@ class PreviewService:
         self.deband_chain_builder = deband_chain_builder
         self.filter_builder = filter_builder
         self._artifacts = {"scope": {}, "compare": {}, "filmstrip": {}}
+        self._samples = []
+
+    def _clear_kind(self, kind):
+        """Keep one live artifact set per interactive preview surface."""
+        directories = list(self._artifacts.get(kind, {}).values())
+        self._artifacts.get(kind, {}).clear()
+        for directory in directories:
+            shutil.rmtree(directory, ignore_errors=True)
 
     def image_path(self, kind, token, which):
         directory = self._artifacts.get(kind, {}).get(token)
@@ -41,10 +50,15 @@ class PreviewService:
             artifacts.clear()
         for directory in directories:
             try:
-                import shutil
                 shutil.rmtree(directory, ignore_errors=True)
             except OSError:
                 pass
+        for sample in self._samples:
+            try:
+                os.remove(sample)
+            except OSError:
+                pass
+        self._samples.clear()
 
     @staticmethod
     def _png_chunk(kind, data):
@@ -119,7 +133,9 @@ class PreviewService:
         threshold = self.engine.threshold_for(strength, settings.get("thr_custom", "0.03"))
         chain = self.deband_chain_builder(threshold, settings["deband_range"], settings["deband_blur"],
                                           settings["dither"], settings.get("deflicker", False),
-                                          settings.get("max_quality", False), settings.get("denoise", "off"))
+                                          settings.get("max_quality", False), settings.get("denoise", "off"),
+                                          settings.get("colour_safe", False))
+        self._clear_kind("scope")
         outdir = tempfile.mkdtemp(prefix="scopes_")
         duration = probe_duration(in_path)
         if timestamp is None:
@@ -161,7 +177,8 @@ class PreviewService:
         threshold = self.engine.threshold_for(strength, settings.get("thr_custom", "0.03"))
         filters = self.filter_builder(threshold, "yuv420p10le", settings["deband_range"], settings["deband_blur"],
                                       settings["dither"], settings.get("deflicker", False),
-                                      settings.get("max_quality", False), settings.get("denoise", "off"))
+                                      settings.get("max_quality", False), settings.get("denoise", "off"),
+                                      settings.get("colour_safe", False))
         output = os.path.join(self.intake_dir, f"processed_sample_{uuid.uuid4().hex}.mp4")
         command = ["ffmpeg", "-y", "-v", "error", "-ss", f"{timestamp:.3f}", "-i", in_path, "-t", f"{length:.3f}",
                    "-map", "0:v:0", "-an", "-vf", filters, "-c:v", "libx265", "-pix_fmt", "yuv420p10le",
@@ -169,9 +186,19 @@ class PreviewService:
         result = subprocess.run(command, capture_output=True, text=True, timeout=90)
         if result.returncode or not os.path.isfile(output):
             raise RuntimeError(result.stderr.strip() or "FFmpeg could not render the sample")
+        self._samples.append(output)
+        # Samples are short-lived inspection artifacts. Retain a few for an
+        # active player, but do not let repeated preview clicks fill disk.
+        while len(self._samples) > 3:
+            stale = self._samples.pop(0)
+            try:
+                os.remove(stale)
+            except OSError:
+                pass
         return self.authorize_path(output), round(timestamp, 2), round(length, 2)
 
     def render_filmstrip(self, in_path, count=8):
+        self._clear_kind("filmstrip")
         outdir = tempfile.mkdtemp(prefix="strip_")
         duration = probe_duration(in_path)
         times = [round(duration * (index + 0.5) / count, 2) for index in range(count)] if duration else [1.0]
@@ -183,6 +210,7 @@ class PreviewService:
         return token, times
 
     def render_compare(self, source, output, timestamp, zoom=None):
+        self._clear_kind("compare")
         outdir = tempfile.mkdtemp(prefix="cmp_")
         crop = ""
         if zoom and zoom.get("factor", 1) > 1:

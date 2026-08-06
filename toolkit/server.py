@@ -105,6 +105,8 @@ DEFAULT_SETTINGS = {
     "two_pass": False,         # 2-pass HEVC for accurate target bitrate (Match/Custom)
     "dual_export": False,      # when Format=ProRes, also produce an HEVC preview alongside it
     "live_preview": False,     # opt-in: source-frame updates cost an extra FFmpeg decode
+    "colour_safe": False,      # high-precision, chroma-aware generated-footage path
+    "source_interpretation": "preserve",  # preserve | rec709_limited | srgb_full
     "engine": "ffmpeg-deband-v1",
 }
 
@@ -409,6 +411,9 @@ def save_settings(s):
     clean = {k: s.get(k, DEFAULT_SETTINGS[k]) for k in DEFAULT_SETTINGS}
     if clean["on_exists"] not in {"skip", "overwrite", "rename"}:
         clean["on_exists"] = DEFAULT_SETTINGS["on_exists"]
+    clean["colour_safe"] = bool(clean["colour_safe"])
+    if clean["source_interpretation"] not in {"preserve", "rec709_limited", "srgb_full"}:
+        clean["source_interpretation"] = "preserve"
     try:
         atomic_json_write(SETTINGS_PATH, clean)
     except Exception:
@@ -442,18 +447,18 @@ def save_custom_presets(presets):
 
 
 def deband_noise_chain(thr, rng=16, blur=True, dither=2, deflicker=False, max_quality=False,
-                       denoise="off"):
+                       denoise="off", colour_safe=False):
     return DEFAULT_ENGINE.build_filter_chain(
         thr, "yuv420p10le", range=rng, blur=blur, dither=dither,
-        deflicker=deflicker, max_quality=max_quality, denoise=denoise,
+        deflicker=deflicker, max_quality=max_quality, denoise=denoise, colour_safe=colour_safe,
     ).rsplit(",format=yuv420p10le", 1)[0]
 
 
 def build_filters(thr, pix_fmt, rng=16, blur=True, dither=2, deflicker=False, max_quality=False,
-                  denoise="off"):
+                  denoise="off", colour_safe=False):
     return DEFAULT_ENGINE.build_filter_chain(
         thr, pix_fmt, range=rng, blur=blur, dither=dither,
-        deflicker=deflicker, max_quality=max_quality, denoise=denoise,
+        deflicker=deflicker, max_quality=max_quality, denoise=denoise, colour_safe=colour_safe,
     )
 
 
@@ -1193,13 +1198,14 @@ def run_batch(items, mode, strength, rate, settings, engine=DEFAULT_ENGINE):
                     _set_item(idx - 1, status="Skipped", pct="—")
                     continue
                 temp_out_path = staging_output_path(out_path)
-                aud, col, streams = plan["audio"], plan["colour"], plan["streams"]
+                aud, col, streams, provenance = (plan["audio"], plan["colour"], plan["streams"],
+                                                   plan["provenance"])
                 subtitle_note = plan["subtitle_note"]
                 pre_cmd = None
                 if is_prores:
                     cmd = ["ffmpeg", "-y", "-nostats", "-i", in_path, *streams, "-vf", filters,
                            "-c:v", "prores_ks", "-profile:v", "4444", "-pix_fmt", "yuv444p10le",
-                           *(["-c:a", "pcm_s16le"] if aud == ["-an"] else aud), *col,
+                           *(["-c:a", "pcm_s16le"] if aud == ["-an"] else aud), *col, *provenance,
                            "-progress", "pipe:1", temp_out_path]
                 else:
                     rate_args = plan["rate_args"]
@@ -1218,16 +1224,19 @@ def run_batch(items, mode, strength, rate, settings, engine=DEFAULT_ENGINE):
                         pre_base = ["ffmpeg", "-y", "-nostats", "-i", in_path, "-map", "0:v:0", "-vf", filters,
                                     "-c:v", encoder, "-pix_fmt", "yuv420p10le", *rate_args,
                                     "-preset", str(item_settings["preset"])]
-                        pre_cmd = [*pre_base, pass_param, f"pass=1:stats={stats}", "-an",
+                        colour_value = plan.get("colour_encoder", ["", ""])[1]
+                        pass_one = f"pass=1:stats={stats}" + (f":{colour_value}" if colour_value else "")
+                        pre_cmd = [*pre_base, pass_param, pass_one, "-an",
                                    "-f", "null", "-progress", "pipe:1", os.devnull]
-                        codec_args = [pass_param, f"pass=2:stats={stats}"]
+                        pass_two = f"pass=2:stats={stats}" + (f":{colour_value}" if colour_value else "")
+                        codec_args = [pass_param, pass_two]
                         if kind == "hevc":
                             codec_args += ["-tag:v", "hvc1"]
-                        cmd = [*base, *codec_args, *aud, *col, "-movflags", "+faststart",
+                        cmd = [*base, *codec_args, *aud, *col, *provenance, "-movflags", "+faststart",
                                "-progress", "pipe:1", temp_out_path]
                     else:
-                        codec_args = ["-tag:v", "hvc1"] if kind == "hevc" else []
-                        cmd = [*base, *codec_args, *aud, *col, "-movflags", "+faststart",
+                        codec_args = [*plan.get("colour_encoder", []), *( ["-tag:v", "hvc1"] if kind == "hevc" else [])]
+                        cmd = [*base, *codec_args, *aud, *col, *provenance, "-movflags", "+faststart",
                                "-progress", "pipe:1", temp_out_path]
                 src_bits = pixfmt_bits(probe_pix_fmt(in_path))
                 dur = probe_duration(in_path)
@@ -1498,7 +1507,8 @@ def render_scopes(in_path, strength, settings, t=None):
     thr = DEFAULT_ENGINE.threshold_for(strength, settings.get("thr_custom", "0.03"))
     chain = deband_noise_chain(thr, settings["deband_range"], settings["deband_blur"],
                                settings["dither"], settings.get("deflicker", False),
-                               settings.get("max_quality", False), settings.get("denoise", "off"))
+                               settings.get("max_quality", False), settings.get("denoise", "off"),
+                               settings.get("colour_safe", False))
     outdir = tempfile.mkdtemp(prefix="scopes_")
     dur = probe_duration(in_path)
     if t is None:
@@ -1559,7 +1569,8 @@ def render_processed_sample(in_path, strength, settings, t=None):
     filters = build_filters(thr, "yuv420p10le", settings["deband_range"],
                             settings["deband_blur"], settings["dither"],
                             settings.get("deflicker", False),
-                            settings.get("max_quality", False), settings.get("denoise", "off"))
+                            settings.get("max_quality", False), settings.get("denoise", "off"),
+                            settings.get("colour_safe", False))
     out_path = os.path.join(INTAKE_DIR, f"processed_sample_{uuid.uuid4().hex}.mp4")
     cmd = ["ffmpeg", "-y", "-v", "error", "-ss", f"{t:.3f}", "-i", in_path,
            "-t", f"{length:.3f}", "-map", "0:v:0", "-an", "-vf", filters,
