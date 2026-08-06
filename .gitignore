@@ -2,8 +2,14 @@ __pycache__/
 *.pyc
 .DS_Store
 
-# Bundled ffmpeg binaries (vendored, not source)
+# Windows release inputs are kept together in .windows. Track their contract
+# but never check in the third-party FFmpeg/DLL release binaries.
 toolkit/bin/
+.windows/bin/
+!.windows/bin/
+.windows/bin/*
+!.windows/bin/win-x64/
+!.windows/bin/win-x64/README.md
 
 # Test media & runtime artifacts (not source)
 *.mp4
@@ -21,3 +27,10 @@ toolkit/.10bit_conversion_log.jsonl
 
 # Release build output
 dist/
+
+# Native-app build environment and py2app artifacts
+.venv-native/
+.venv-windows/
+toolkit/build/
+toolkit/build-native*/
+toolkit/native-dist*/

@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "purpose": "Synthetic, redistributable clips for comparing Faithful 10-bit and the optional libplacebo backend.",
+  "hardware_gate": "Run on the target M3 macOS installation; the development sandbox cannot validate Metal/Vulkan.",
+  "clips": [
+    {"id": "sky-gradient", "fixture": "lavfi:gradients", "tags": ["sky", "smooth-gradient", "sdr"]},
+    {"id": "dark-gradient", "fixture": "lavfi:radial-gradient", "tags": ["dark", "shadow", "banding"]},
+    {"id": "smoke-like", "fixture": "lavfi:noise-plus-blur", "tags": ["smoke", "texture"]},
+    {"id": "skin-tone-ramp", "fixture": "lavfi:color-ramp", "tags": ["skin", "edges"]},
+    {"id": "animation-edges", "fixture": "lavfi:drawtext-motion", "tags": ["animation", "text", "fast-motion"]},
+    {"id": "compressed-gradient", "fixture": "generated:h264-crf-35", "tags": ["compression", "gradient"]},
+    {"id": "ten-bit-input", "fixture": "generated:yuv420p10le", "tags": ["10-bit", "passthrough"]},
+    {"id": "hdr-tags", "fixture": "generated:bt2020-pq-tags", "tags": ["hdr", "colour-tags"]}
+  ],
+  "required_checks": [
+    "engine availability and Vulkan device creation",
+    "yuv420p10le output, unchanged dimensions and duration",
+    "audio stream count, metadata, chapters and supported subtitles",
+    "frame wipe at 200-400 percent for steps, softness, halos and chroma bleed",
+    "median and 1-percent-low FPS, memory pressure and thermal behavior",
+    "cancellation, collision, full-disk and relaunch behavior"
+  ]
+}

@@ -23,24 +23,57 @@ Endpoints (all on 127.0.0.1):
 
 import atexit
 import json
+import math
 import os
-import platform
+import secrets
 import shutil
+import struct
+import sys
 import subprocess
 import threading
 import time
 import tempfile
 import urllib.parse
+import uuid
+import zlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from export_safety import (resolve_output_path, staging_output_path,
+                           unique_output_path, writable_parent)
+from conversion_runner import run_ffmpeg
+from conversion_service import ConversionPlanner
+from watch_service import WatchService
+from native_lifecycle import run_native_window
+from single_instance import InstanceGuard, activate_existing
+from history_store import append_report, read_reports
+from preflight import estimate_export_bytes as estimate_export_bytes_pure
+from preview_service import PreviewService
+from engines import DEFAULT_ENGINE, LIBPLACEBO_ENGINE, engine_catalog, requested_engine
+from media_probe import (pixfmt_bits, probe_audio_codec, probe_bitrate_kbps,
+                         probe_duration, probe_info, probe_pix_fmt,
+                         probe_subtitle_codecs)
+from runtime_platform import (KeepAwake, app_support_dir, binary_platform_dir,
+                              fallback_file_dialog, ffmpeg_tool_names, notify,
+                              open_url, remove_macos_quarantine, reveal_files, IS_WINDOWS,
+                              show_error)
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-HOST, PORT = "127.0.0.1", 8766
+HOST, PORT = "127.0.0.1", int(os.environ.get("TENBIT_PORT", "8766"))
 INTAKE_DIR = tempfile.mkdtemp(prefix="10bit_intake_")  # dropped/uploaded files land here
+APP_NAME = "10-bit Converter"
+APP_SUPPORT_DIR = os.environ.get(
+    "TENBIT_APP_DATA",
+    app_support_dir("Jazib Ali 360", APP_NAME),
+)
+APP_BUNDLE_ID = "com.jazibali360.tenbitconverter"
+INSTANCE_GUARD = None
+BUNDLED_ENGINE_LOCK = threading.Lock()
+API_TOKEN = secrets.token_urlsafe(32)
 VIDEO_EXTS = (".mp4", ".mov", ".mkv", ".avi", ".m4v", ".webm", ".mpg", ".mpeg", ".ts")
-STRENGTH_THR = {"Low": "0.01", "Medium": "0.02", "High": "0.05", "Custom": None}
+STRENGTH_THR = DEFAULT_ENGINE.strength_thresholds
 X265_PRESETS = ["ultrafast", "superfast", "veryfast", "faster", "fast",
                 "medium", "slow", "slower", "veryslow"]
-SETTINGS_PATH = os.path.join(HERE, ".10bit_converter_settings.json")
+SETTINGS_PATH = os.path.join(APP_SUPPORT_DIR, "settings.json")
+WINDOW_STATE_PATH = os.path.join(APP_SUPPORT_DIR, "window_state.json")
 DEFAULT_SETTINGS = {
     "dest_mode": "same", "dest_dir": "", "suffix": "_10bit", "on_exists": "skip",
     "crf": 18, "preset": "slow", "deband_range": 16, "deband_blur": True,
@@ -52,22 +85,215 @@ DEFAULT_SETTINGS = {
     "denoise": "off",          # "off" | "light" | "medium" (hqdn3d; softens slightly)
     "two_pass": False,         # 2-pass HEVC for accurate target bitrate (Match/Custom)
     "dual_export": False,      # when Format=ProRes, also produce an HEVC preview alongside it
+    "live_preview": False,     # opt-in: source-frame updates cost an extra FFmpeg decode
+    "engine": "ffmpeg-deband-v1",
 }
 
 DENOISE_FILTER = {"light": "hqdn3d=2:1:2:3", "medium": "hqdn3d=4:3:6:6"}
 
 MP4_COPY_AUDIO = {"aac", "mp3", "ac3", "eac3"}   # codecs safe to stream-copy into .mp4
+CONVERSION_PLANNER = ConversionPlanner(INTAKE_DIR, STRENGTH_THR, DEFAULT_ENGINE)
 
 
 # ------------------------------------------------------------------ ffmpeg setup
-def ensure_bundled_ffmpeg():
-    d = os.path.join(HERE, "bin", platform.machine())
-    if os.path.isfile(os.path.join(d, "ffmpeg")) and os.path.isfile(os.path.join(d, "ffprobe")):
-        try:
-            subprocess.run(["xattr", "-dr", "com.apple.quarantine", d], capture_output=True)
-        except Exception:
-            pass
-        os.environ["PATH"] = d + os.pathsep + os.environ.get("PATH", "")
+def bundled_ffmpeg_dir():
+    """Return the app's own FFmpeg directory, only when it is runnable.
+
+    The native app intentionally does not depend on Homebrew, PATH, or a
+    separately installed FFmpeg. Keeping this check here makes a damaged or
+    incomplete app bundle fail clearly instead of converting with an unknown
+    system binary.
+    """
+    d = os.path.join(HERE, "bin", binary_platform_dir())
+    tools = [os.path.join(d, name) for name in ffmpeg_tool_names()]
+    return d if all(os.path.isfile(tool) and os.access(tool, os.X_OK) for tool in tools) else None
+
+
+def bundled_engine_dir(engine=None):
+    base = os.path.join(HERE, "bin", binary_platform_dir())
+    if getattr(engine, "engine_id", "") == "libplacebo-deband-v1":
+        bundle = os.path.join(base, "libplacebo.bundle.zip")
+        if os.path.isfile(bundle):
+            try:
+                # The archive is the release artifact that preserves MoltenVK
+                # metadata. Prefer it even in a developer checkout: an older
+                # adjacent libplacebo folder may be present and has previously
+                # made the GPU option appear unavailable.
+                stat = os.stat(bundle)
+                cache_root = os.path.join(
+                    APP_SUPPORT_DIR, "engines",
+                    f"libplacebo-{stat.st_size:x}-{stat.st_mtime_ns:x}",
+                )
+                extracted = os.path.join(cache_root, "libplacebo")
+                tools = [os.path.join(extracted, name) for name in ffmpeg_tool_names()]
+                with BUNDLED_ENGINE_LOCK:
+                    if not all(os.path.isfile(tool) and os.access(tool, os.X_OK) for tool in tools):
+                        staging = f"{cache_root}.extract-{uuid.uuid4().hex}"
+                        os.makedirs(staging, exist_ok=False)
+                        try:
+                            # ditto preserves the code-signing/resource metadata embedded
+                            # in MoltenVK and its dylibs. Python's ZipFile extraction does
+                            # not, which can make a valid GPU runtime fail at launch.
+                            if sys.platform == "darwin":
+                                subprocess.run(["ditto", "-x", "-k", bundle, staging],
+                                               check=True, capture_output=True, timeout=90)
+                            else:
+                                shutil.unpack_archive(bundle, staging, "zip")
+                            staged_engine = os.path.join(staging, "libplacebo")
+                            staged_tools = [os.path.join(staged_engine, name) for name in ffmpeg_tool_names()]
+                            if not all(os.path.isfile(tool) for tool in staged_tools):
+                                raise OSError("optional engine archive is incomplete")
+                            os.makedirs(os.path.dirname(cache_root), exist_ok=True)
+                            os.rename(staging, cache_root)
+                        except Exception:
+                            shutil.rmtree(staging, ignore_errors=True)
+                            raise
+                tools = [os.path.join(extracted, name) for name in ffmpeg_tool_names()]
+                if all(os.path.isfile(tool) and os.access(tool, os.X_OK) for tool in tools):
+                    for tool in tools:
+                        os.chmod(tool, os.stat(tool).st_mode | 0o111)
+                    return extracted
+            except (OSError, subprocess.SubprocessError):
+                return None
+        # Direct folder path supports developer builds and the Windows package,
+        # which deliberately ships folders instead of a user-facing zip.
+        candidate = os.path.join(base, "libplacebo")
+        tools = [os.path.join(candidate, name) for name in ffmpeg_tool_names()]
+        if all(os.path.isfile(tool) and os.access(tool, os.X_OK) for tool in tools):
+            if IS_WINDOWS:
+                # Program Files is not writable for a normal user. Copy the
+                # packaged GPU folder to LocalAppData before the engine writes
+                # its per-user Vulkan ICD runtime manifest.
+                try:
+                    stat = os.stat(candidate)
+                    cache_root = os.path.join(
+                        APP_SUPPORT_DIR, "engines",
+                        f"libplacebo-{stat.st_size:x}-{stat.st_mtime_ns:x}",
+                    )
+                    extracted = os.path.join(cache_root, "libplacebo")
+                    with BUNDLED_ENGINE_LOCK:
+                        copied_tools = [os.path.join(extracted, name) for name in ffmpeg_tool_names()]
+                        if not all(os.path.isfile(tool) for tool in copied_tools):
+                            staging = f"{cache_root}.copy-{uuid.uuid4().hex}"
+                            try:
+                                shutil.copytree(candidate, os.path.join(staging, "libplacebo"))
+                                os.makedirs(os.path.dirname(cache_root), exist_ok=True)
+                                os.rename(staging, cache_root)
+                            except Exception:
+                                shutil.rmtree(staging, ignore_errors=True)
+                                raise
+                    return extracted
+                except OSError:
+                    return None
+            return candidate
+    return bundled_ffmpeg_dir()
+
+
+def ensure_bundled_ffmpeg(engine=None):
+    d = bundled_engine_dir(engine)
+    if not d:
+        return False
+    remove_macos_quarantine(d)
+    os.environ["PATH"] = d + os.pathsep + os.environ.get("PATH", "")
+    lib_dir = os.path.join(d, "lib")
+    # The packaged libplacebo binary already has @loader_path rpaths. Setting
+    # DYLD_LIBRARY_PATH makes macOS validate the large dependency set through
+    # its slow fallback search path; use the embedded rpaths instead.
+    if os.path.isdir(lib_dir) and getattr(engine, "engine_id", "") != "libplacebo-deband-v1":
+        os.environ["DYLD_LIBRARY_PATH"] = lib_dir + os.pathsep + os.environ.get("DYLD_LIBRARY_PATH", "")
+    if getattr(engine, "engine_id", "") == "libplacebo-deband-v1":
+        runtime_env = LIBPLACEBO_ENGINE.runtime_environment(os.path.join(d, "ffmpeg"), os.environ)
+        os.environ.pop("DYLD_LIBRARY_PATH", None)
+        if runtime_env.get("VK_ICD_FILENAMES"):
+            os.environ["VK_ICD_FILENAMES"] = runtime_env["VK_ICD_FILENAMES"]
+    else:
+        icd = os.path.join(d, "vulkan", "icd.d", "MoltenVK_icd.json")
+        if os.path.isfile(icd):
+            os.environ["VK_ICD_FILENAMES"] = icd
+    return True
+
+
+def show_missing_dependency_error():
+    """Make an incomplete frozen app understandable when it has no console."""
+    message = "The app's bundled FFmpeg tools are missing. Please download a fresh copy of 10-bit Converter."
+    print("ERROR:", message)
+    show_error("10-bit Converter", message)
+
+
+def ensure_app_support_dir():
+    """Create the user-writable state directory, never the signed app bundle."""
+    os.makedirs(APP_SUPPORT_DIR, exist_ok=True)
+
+
+def atomic_json_write(path, data):
+    """Avoid corrupting preferences if the app is interrupted while saving."""
+    ensure_app_support_dir()
+    tmp = f"{path}.{os.getpid()}.{threading.get_ident()}.tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, path)
+
+
+def load_window_state():
+    """Load a conservative native-window placement without trusting stale data."""
+    state = {"width": 1180, "height": 820, "x": None, "y": None}
+    try:
+        with open(WINDOW_STATE_PATH, encoding="utf-8") as f:
+            saved = json.load(f)
+        if isinstance(saved, dict):
+            state["width"] = max(820, min(4096, int(saved.get("width", state["width"]))))
+            state["height"] = max(620, min(3000, int(saved.get("height", state["height"]))))
+            for axis in ("x", "y"):
+                value = saved.get(axis)
+                if isinstance(value, (int, float)) and -10000 <= value <= 10000:
+                    state[axis] = int(value)
+    except (OSError, ValueError, TypeError, json.JSONDecodeError):
+        pass
+    return state
+
+
+WINDOW_STATE = {"width": 1180, "height": 820, "x": None, "y": None}
+WINDOW_STATE_LOCK = threading.Lock()
+WINDOW_STATE_TIMER = None
+
+
+def save_window_state():
+    """Persist the latest native window state atomically, outside the app bundle."""
+    global WINDOW_STATE_TIMER
+    with WINDOW_STATE_LOCK:
+        snapshot = dict(WINDOW_STATE)
+        WINDOW_STATE_TIMER = None
+    try:
+        atomic_json_write(WINDOW_STATE_PATH, snapshot)
+    except OSError:
+        pass
+
+
+def schedule_window_state_save(*_):
+    """Debounce Cocoa move/resize events so dragging a window does not churn disk."""
+    global WINDOW_STATE_TIMER
+    with WINDOW_STATE_LOCK:
+        if WINDOW_STATE_TIMER:
+            WINDOW_STATE_TIMER.cancel()
+        WINDOW_STATE_TIMER = threading.Timer(0.5, save_window_state)
+        WINDOW_STATE_TIMER.daemon = True
+        WINDOW_STATE_TIMER.start()
+
+
+def remember_window_size(width, height, *_):
+    with WINDOW_STATE_LOCK:
+        WINDOW_STATE["width"] = max(820, min(4096, int(width)))
+        WINDOW_STATE["height"] = max(620, min(3000, int(height)))
+    schedule_window_state_save()
+
+
+def remember_window_position(x, y, *_):
+    with WINDOW_STATE_LOCK:
+        WINDOW_STATE["x"] = max(-10000, min(10000, int(x)))
+        WINDOW_STATE["y"] = max(-10000, min(10000, int(y)))
+    schedule_window_state_save()
 
 
 def load_settings():
@@ -82,15 +308,16 @@ def load_settings():
 
 def save_settings(s):
     clean = {k: s.get(k, DEFAULT_SETTINGS[k]) for k in DEFAULT_SETTINGS}
+    if clean["on_exists"] not in {"skip", "overwrite", "rename"}:
+        clean["on_exists"] = DEFAULT_SETTINGS["on_exists"]
     try:
-        with open(SETTINGS_PATH, "w") as f:
-            json.dump(clean, f, indent=2)
+        atomic_json_write(SETTINGS_PATH, clean)
     except Exception:
         pass
     return clean
 
 
-CUSTOM_PRESETS_PATH = os.path.join(HERE, ".10bit_custom_presets.json")
+CUSTOM_PRESETS_PATH = os.path.join(APP_SUPPORT_DIR, "custom_presets.json")
 # What a preset captures: the top-level Format/Deband/Bitrate picks plus every
 # processing setting (everything except output-location fields, which are
 # per-machine and shouldn't travel with a preset).
@@ -110,81 +337,25 @@ def load_custom_presets():
 
 def save_custom_presets(presets):
     try:
-        with open(CUSTOM_PRESETS_PATH, "w") as f:
-            json.dump(presets, f, indent=2)
+        atomic_json_write(CUSTOM_PRESETS_PATH, presets)
     except Exception:
         pass
 
 
 def deband_noise_chain(thr, rng=16, blur=True, dither=2, deflicker=False, max_quality=False,
                        denoise="off"):
-    chain = ""
-    if denoise in DENOISE_FILTER:
-        chain += DENOISE_FILTER[denoise] + ","
-    if deflicker:
-        chain += "deflicker,"
-    if max_quality:
-        # Work at 16-bit 4:4:4 so debanding + dithering compute with headroom,
-        # then the final format step quantizes to 10-bit. Pure precision — it
-        # does not add, remove, or reinterpret any detail/texture.
-        chain += "format=yuv444p16le,"
-    return (chain + f"deband=1thr={thr}:2thr={thr}:3thr={thr}:range={rng}:blur={1 if blur else 0},"
-            f"noise=alls={dither}:allf=t+u")
+    return DEFAULT_ENGINE.build_filter_chain(
+        thr, "yuv420p10le", range=rng, blur=blur, dither=dither,
+        deflicker=deflicker, max_quality=max_quality, denoise=denoise,
+    ).rsplit(",format=yuv420p10le", 1)[0]
 
 
 def build_filters(thr, pix_fmt, rng=16, blur=True, dither=2, deflicker=False, max_quality=False,
                   denoise="off"):
-    return (deband_noise_chain(thr, rng, blur, dither, deflicker, max_quality, denoise)
-            + f",format={pix_fmt}")
-
-
-def probe_duration(path):
-    try:
-        out = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration",
-                              "-of", "csv=p=0", path], capture_output=True, text=True,
-                             check=True).stdout.strip()
-        return float(out)
-    except Exception:
-        return 0.0
-
-
-def probe_bitrate_kbps(path):
-    """Source video bitrate in kbps. Tries the video stream, falls back to the
-    container total, then estimates from filesize/duration. 0 if unknown."""
-    for args in (["-select_streams", "v:0", "-show_entries", "stream=bit_rate"],
-                 ["-show_entries", "format=bit_rate"]):
-        try:
-            out = subprocess.run(["ffprobe", "-v", "error", *args, "-of", "csv=p=0", path],
-                                 capture_output=True, text=True, check=True).stdout.strip()
-            if out.isdigit() and int(out) > 0:
-                return int(out) // 1000
-        except Exception:
-            pass
-    try:
-        dur = probe_duration(path)
-        if dur > 0:
-            return int(os.path.getsize(path) * 8 / dur / 1000)
-    except Exception:
-        pass
-    return 0
-
-
-def probe_pix_fmt(path):
-    try:
-        return subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0",
-                               "-show_entries", "stream=pix_fmt", "-of", "csv=p=0", path],
-                              capture_output=True, text=True, check=True).stdout.strip()
-    except Exception:
-        return ""
-
-
-def probe_audio_codec(path):
-    try:
-        return subprocess.run(["ffprobe", "-v", "error", "-select_streams", "a:0",
-                               "-show_entries", "stream=codec_name", "-of", "csv=p=0", path],
-                              capture_output=True, text=True, check=True).stdout.strip()
-    except Exception:
-        return ""
+    return DEFAULT_ENGINE.build_filter_chain(
+        thr, pix_fmt, range=rng, blur=blur, dither=dither,
+        deflicker=deflicker, max_quality=max_quality, denoise=denoise,
+    )
 
 
 def audio_args(in_path, is_prores, audio_mode):
@@ -228,13 +399,6 @@ def color_args(in_path):
     if d.get("color_range") in ("tv", "pc", "limited", "full"):
         args += ["-color_range", d["color_range"]]
     return args
-
-
-def pixfmt_bits(pf):
-    for b in ("16", "12", "10"):
-        if b in pf:
-            return int(b)
-    return 8
 
 
 def human_size(n):
@@ -311,10 +475,11 @@ def analyze_banding(path, samples=4):
                            capture_output=True)
         if r.returncode != 0 or not r.stdout or len(r.stdout) != w * h:
             continue  # skip this sample rather than misread bytes on a mismatch
-        scores.append(_column_banding_score(r.stdout, w, h))
+        scores.append((t, _column_banding_score(r.stdout, w, h)))
     if not scores:
         return {"score": 0, "band": "unknown", "message": "Couldn't analyze this file.", "samples": 0}
-    score = sum(scores) / len(scores)
+    score = sum(s for _, s in scores) / len(scores)
+    worst_time, worst_score = max(scores, key=lambda pair: pair[1])
     if score < 10:
         band, message = "low", ("Low banding detected — this footage already looks fairly smooth. "
                                  "10-bit conversion will still add grading headroom and a touch of "
@@ -325,7 +490,10 @@ def analyze_banding(path, samples=4):
     else:
         band, message = "high", ("Significant banding detected — this footage should show a clear "
                                   "improvement after conversion. Check Preview scopes to confirm.")
-    return {"score": round(score, 1), "band": band, "message": message, "samples": len(scores)}
+    recommended = "Low" if score < 10 else "Medium" if score < 35 else "High"
+    return {"score": round(score, 1), "band": band, "message": message, "samples": len(scores),
+            "worst_time": round(worst_time, 2), "worst_score": round(worst_score, 1),
+            "recommended_strength": recommended}
 
 
 def verify_output(path):
@@ -337,40 +505,69 @@ def verify_output(path):
     return f"{check} {bits}-bit ({pf}) · {kbps / 1000:.1f} Mbps · {human_size(size)}"
 
 
-def probe_info(path):
-    """One-shot probe: duration, bitrate (kbps), resolution, fps, pix_fmt."""
-    try:
-        out = subprocess.run(
-            ["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries",
-             "stream=width,height,pix_fmt,avg_frame_rate,codec_name:format=duration,bit_rate",
-             "-of", "json", path], capture_output=True, text=True, check=True).stdout
-        d = json.loads(out)
-        st = (d.get("streams") or [{}])[0]
-        fmt = d.get("format", {})
-        dur = float(fmt.get("duration") or 0)
-        br = fmt.get("bit_rate")
-        if br and br.isdigit() and int(br) > 0:
-            kbps = int(br) // 1000
-        elif dur > 0:
-            kbps = int(os.path.getsize(path) * 8 / dur / 1000)
-        else:
-            kbps = 0
-        fps = 0.0
-        r = st.get("avg_frame_rate", "0/0")
-        if "/" in r:
-            n, dn = r.split("/")
-            fps = (float(n) / float(dn)) if float(dn or 0) else 0.0
-        pix_fmt = st.get("pix_fmt", "")
-        return {"dur": round(dur, 2), "kbps": kbps, "width": st.get("width", 0),
-                "height": st.get("height", 0), "fps": round(fps, 2),
-                "pix_fmt": pix_fmt, "codec": st.get("codec_name", ""),
-                "bits": pixfmt_bits(pix_fmt) if pix_fmt else 0}
-    except Exception:
-        return {"dur": 0, "kbps": 0, "width": 0, "height": 0, "fps": 0, "pix_fmt": "", "codec": "", "bits": 0}
+AUTHORIZED_PATHS = set()
+AUTHORIZED_PATHS_LOCK = threading.Lock()
+
+
+def _canonical_path(path):
+    return os.path.realpath(os.path.abspath(path)) if path else ""
+
+
+def authorize_path(path):
+    """Remember files deliberately selected through this app for API actions."""
+    path = _canonical_path(path)
+    if path:
+        with AUTHORIZED_PATHS_LOCK:
+            AUTHORIZED_PATHS.add(path)
+    return path
+
+
+def is_authorized_path(path):
+    path = _canonical_path(path)
+    with AUTHORIZED_PATHS_LOCK:
+        return bool(path) and path in AUTHORIZED_PATHS
 
 
 def item_for(path):
+    path = authorize_path(path)
     return {"path": path, "name": os.path.basename(path), **probe_info(path)}
+
+
+def queue_stub(path):
+    """Authorize a selected file without blocking the UI on ffprobe."""
+    path = authorize_path(path)
+    return {"path": path, "name": os.path.basename(path)}
+
+
+def mode_kind(mode):
+    """Return the encoder family for a UI export mode (never trust UI text)."""
+    value = str(mode or "")
+    if value.startswith("ProRes"):
+        return "prores"
+    if value.startswith("H.264"):
+        return "h264"
+    return "hevc"
+
+
+def normalise_job_params(item, default_mode, default_strength, default_rate):
+    """Resolve an optional per-clip override against the batch defaults."""
+    override = item.get("override") if isinstance(item.get("override"), dict) else {}
+    mode = override.get("mode", default_mode)
+    strength = override.get("strength", default_strength)
+    rate = override.get("rate", default_rate)
+    valid_modes = {"HEVC (smaller, delivery)", "H.264 (10-bit, delivery)",
+                   "ProRes 4444 (grading, huge file)"}
+    if mode not in valid_modes:
+        mode = default_mode
+    if strength not in STRENGTH_THR:
+        strength = default_strength
+    if rate not in {"Match source", "Quality (CRF)", "Custom"}:
+        rate = default_rate
+    return mode, strength, rate, override
+
+
+def format_label(mode):
+    return {"prores": "ProRes 4444", "h264": "H.264 10-bit", "hevc": "HEVC"}[mode_kind(mode)]
 
 
 def make_output_path(in_path, is_prores, dest_dir, suffix):
@@ -386,6 +583,29 @@ def make_output_path(in_path, is_prores, dest_dir, suffix):
     return os.path.join(directory, f"{base}{suffix}.{ext}")
 
 
+def stream_map_args():
+    """Keep the edited primary video plus every audio stream and container
+    metadata/chapters. Subtitle handling is intentionally conservative because
+    bitmap subtitle codecs cannot safely be placed in every target container."""
+    return ["-map", "0:v:0", "-map", "0:a?", "-map_metadata", "0", "-map_chapters", "0"]
+
+
+def subtitle_stream_args(in_path):
+    """Carry text subtitles into MP4/MOV as mov_text when safe.
+
+    Bitmap subtitle tracks (PGS/DVD) cannot be represented reliably in these
+    delivery containers; those are reported rather than silently causing the
+    entire export to fail.
+    """
+    codecs = probe_subtitle_codecs(in_path)
+    if not codecs:
+        return [], ""
+    text_codecs = {"mov_text", "subrip", "webvtt", "ass", "ssa"}
+    if all(codec in text_codecs for codec in codecs):
+        return ["-map", "0:s?", "-c:s", "mov_text"], ""
+    return [], f"{len(codecs)} unsupported subtitle track(s) were not copied to this container"
+
+
 def fmt_time(sec):
     if sec is None or sec < 0 or sec != sec:
         return "--:--"
@@ -394,6 +614,8 @@ def fmt_time(sec):
 
 
 def osascript(script):
+    if sys.platform != "darwin":
+        return ""
     try:
         r = subprocess.run(["osascript", "-e", script], capture_output=True, text=True)
         return r.stdout.strip() if r.returncode == 0 else ""
@@ -407,17 +629,32 @@ def _as_str(s):
 
 
 def notify_completion(title, message):
-    """macOS notification + sound when a batch finishes — fires server-side so
-    it works even if the browser tab isn't focused (or is closed/backgrounded)."""
-    script = (f'display notification "{_as_str(message)}" with title "{_as_str(title)}" '
-              f'sound name "Glass"')
+    """Surface completion outside the app window where the OS supports it."""
+    notify(title, message)
+
+
+def native_file_dialog(kind, prompt, multiple=False):
+    """Use a PyWebView-native picker when the desktop shell is available."""
+    if not (NATIVE_WINDOW and NATIVE_WEBVIEW):
+        return None
     try:
-        subprocess.run(["osascript", "-e", script], capture_output=True, timeout=5)
+        dialog_type = (getattr(NATIVE_WEBVIEW, "FOLDER_DIALOG", None)
+                       if kind == "folder" else getattr(NATIVE_WEBVIEW, "OPEN_DIALOG", None))
+        result = NATIVE_WINDOW.create_file_dialog(
+            dialog_type, allow_multiple=multiple, directory="", file_types=("Video files (*.mp4;*.mov;*.mkv;*.avi;*.m4v;*.webm;*.mpg;*.mpeg;*.ts)",)
+        )
+        return [str(p) for p in (result or [])]
     except Exception:
-        pass
+        return None
 
 
 def pick_files():
+    native = native_file_dialog("files", "Select video(s) to convert", multiple=True)
+    if native is not None:
+        return native
+    fallback = fallback_file_dialog("files", "Select video(s) to convert", multiple=True)
+    if fallback is not None:
+        return fallback
     script = (
         'set out to ""\n'
         'try\n'
@@ -434,6 +671,22 @@ def pick_files():
 
 
 def pick_folder():
+    native = native_file_dialog("folder", "Select a folder of videos")
+    if native is not None:
+        p = native[0] if native else ""
+        if not p or not os.path.isdir(p):
+            return []
+        return [os.path.join(p, f) for f in sorted(os.listdir(p))
+                if os.path.isfile(os.path.join(p, f)) and f.lower().endswith(VIDEO_EXTS)
+                and "_10bit." not in f]
+    fallback = fallback_file_dialog("folder", "Select a folder of videos")
+    if fallback is not None:
+        p = fallback[0] if fallback else ""
+        if not p or not os.path.isdir(p):
+            return []
+        return [os.path.join(p, f) for f in sorted(os.listdir(p))
+                if os.path.isfile(os.path.join(p, f)) and f.lower().endswith(VIDEO_EXTS)
+                and "_10bit." not in f]
     p = osascript('try\nreturn POSIX path of (choose folder with prompt '
                   '"Select a folder of videos")\nend try')
     if not p or not os.path.isdir(p):
@@ -445,8 +698,16 @@ def pick_folder():
 
 def pick_folder_path(prompt="Select a folder to watch"):
     """Just the folder path (no listing) — for Watch folder, not file pickers."""
+    native = native_file_dialog("folder", prompt)
+    if native is not None:
+        p = native[0] if native else ""
+        return authorize_path(p) if p and os.path.isdir(p) else ""
+    fallback = fallback_file_dialog("folder", prompt)
+    if fallback is not None:
+        p = fallback[0] if fallback else ""
+        return authorize_path(p) if p and os.path.isdir(p) else ""
     p = osascript(f'try\nreturn POSIX path of (choose folder with prompt "{prompt}")\nend try')
-    return p if p and os.path.isdir(p) else ""
+    return authorize_path(p) if p and os.path.isdir(p) else ""
 
 
 # ------------------------------------------------------------------ conversion job
@@ -460,11 +721,13 @@ class Job:
         self.cancel = threading.Event()      # instant: kills the current ffmpeg process
         self.stop_after = threading.Event()  # graceful: finishes the current file, then halts
         self.items = []          # [{path,name,status,pct}]
-        self.now = {"file": "—", "pct": 0, "frame": "", "fps": "", "speed": "", "eta": "--:--"}
+        self.now = {"file": "—", "pct": 0, "frame": "", "fps": "", "speed": "", "eta": "--:--", "sec": 0}
         self.summary = None
         self.total = 0
         self.index = 0
         self.started = 0.0
+        self.proc = None
+        self.current_path = ""
 
     def snapshot(self):
         with self.lock:
@@ -482,12 +745,74 @@ class Job:
 
 
 JOB = Job()
+RUNNING_PREVIEW = {"key": None, "jpeg": b""}
+
+
+def running_preview_jpeg():
+    """Small, cached source-frame preview for the active encode.
+
+    It intentionally samples the source—not the partially-written output—so
+    it remains reliable for every codec and never competes with the encoder's
+    file writer. The browser only asks every five seconds.
+    """
+    with JOB.lock:
+        if not JOB.running or not JOB.current_path or not os.path.isfile(JOB.current_path):
+            return b""
+        path = JOB.current_path
+        seconds = max(0.0, float(JOB.now.get("sec", 0) or 0))
+    key = (path, int(seconds // 2))
+    if RUNNING_PREVIEW["key"] == key and RUNNING_PREVIEW["jpeg"]:
+        return RUNNING_PREVIEW["jpeg"]
+    result = subprocess.run([
+        "ffmpeg", "-v", "error", "-ss", f"{seconds:.3f}", "-i", path, "-frames:v", "1",
+        "-vf", "scale=480:320:force_original_aspect_ratio=decrease:flags=lanczos,"
+               "pad=480:320:(ow-iw)/2:(oh-ih)/2:color=0x090b10",
+        "-q:v", "3", "-f", "image2pipe", "-vcodec", "mjpeg", "-"], capture_output=True)
+    if result.returncode == 0 and result.stdout:
+        RUNNING_PREVIEW.update(key=key, jpeg=result.stdout)
+        return result.stdout
+    return b""
 
 LAST_REPORT = {}
-REPORT_LOG_PATH = os.path.join(HERE, ".10bit_conversion_log.jsonl")
+REPORT_LOG_PATH = os.path.join(APP_SUPPORT_DIR, "conversion_log.jsonl")
+FAILURE_LOG_DIR = os.path.join(APP_SUPPORT_DIR, "failure-logs")
 
 
-def build_and_store_report(items, mode, strength, rate, settings, done, skipped, failed, cancelled, started):
+def write_failure_log(name, command, error, partial_path=""):
+    """Persist a concise local diagnostic for a failed FFmpeg invocation."""
+    try:
+        os.makedirs(FAILURE_LOG_DIR, exist_ok=True)
+        stamp = time.strftime("%Y%m%d-%H%M%S")
+        safe_name = "".join(c if c.isalnum() or c in "-_" else "_" for c in name)[:48] or "export"
+        path = os.path.join(FAILURE_LOG_DIR, f"{stamp}-{safe_name}-{uuid.uuid4().hex[:8]}.log")
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write("10-bit Converter failure report\n")
+            handle.write(f"Time: {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+            handle.write(f"Source: {name}\n")
+            handle.write(f"Partial export: {partial_path or 'none'}\n\n")
+            handle.write("Command:\n" + " ".join(map(str, command or [])) + "\n\n")
+            handle.write("FFmpeg error:\n" + (error or "No diagnostic output was returned.") + "\n")
+        return authorize_path(path)
+    except OSError:
+        return ""
+
+
+def mark_item_failed(index, name, error, command=None, partial_path=None):
+    """Make failed work recoverable: retain a log, discard incomplete media."""
+    partial_note = "No output was written."
+    if partial_path and os.path.exists(partial_path):
+        try:
+            os.remove(partial_path)
+            partial_note = "Incomplete export was discarded safely."
+        except OSError:
+            partial_note = f"Incomplete export remains at {partial_path}."
+    log_path = write_failure_log(name, command or [], error, partial_path or "")
+    _set_item(index, status="Failed", pct="—", error=error,
+              recovery=partial_note, log_path=log_path)
+
+
+def build_and_store_report(items, mode, strength, rate, settings, done, skipped, failed, cancelled, started,
+                           engine=DEFAULT_ENGINE):
     """A human-readable summary of what a batch just did: what was converted,
     with what settings, and the size/duration outcome. Kept in memory for the
     UI and appended to a log file on disk for later troubleshooting/reference."""
@@ -508,12 +833,28 @@ def build_and_store_report(items, mode, strength, rate, settings, done, skipped,
                 pass
         total_in += in_size
         total_out += out_size
-        rows.append({"name": it["name"], "status": it.get("status"), "info": it.get("info", ""),
-                     "in_size": human_size(in_size) if in_size else "", "out_size": human_size(out_size) if out_size else ""})
+        rows.append({
+            "name": it["name"], "status": it.get("status"), "info": it.get("info", ""),
+            "error": it.get("error", ""), "profile": it.get("profile", ""),
+            "source": it.get("path", ""), "output": out_path or "",
+            "log_path": it.get("log_path", ""), "recovery": it.get("recovery", ""),
+            "output_suffix": it.get("output_suffix", ""),
+            # Store a resolved profile so a history retry remains faithful even
+            # after the user changes the current global profile.
+            "override": it.get("override") or {
+                "mode": mode, "strength": strength, "rate": rate,
+                "target_mbps": settings.get("target_mbps", 12),
+            },
+            "in_size": human_size(in_size) if in_size else "",
+            "out_size": human_size(out_size) if out_size else "",
+        })
     report = {
+        "id": uuid.uuid4().hex,
         "time": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(started)) if started else "",
         "mode": mode, "strength": strength, "rate": rate,
-        "settings": {k: settings.get(k) for k in PRESET_SETTINGS_KEYS},
+        "engine": engine.engine_id,
+        "engine_name": engine.display_name,
+        "settings": {k: settings.get(k) for k in DEFAULT_SETTINGS},
         "done": done, "skipped": skipped, "failed": failed, "cancelled": cancelled,
         "total_in_size": human_size(total_in) if total_in else "",
         "total_out_size": human_size(total_out) if total_out else "",
@@ -523,11 +864,16 @@ def build_and_store_report(items, mode, strength, rate, settings, done, skipped,
     LAST_REPORT.clear()
     LAST_REPORT.update(report)
     try:
-        with open(REPORT_LOG_PATH, "a") as f:
-            f.write(json.dumps(report) + "\n")
+        ensure_app_support_dir()
+        append_report(REPORT_LOG_PATH, report)
     except Exception:
         pass
     return report
+
+
+def load_history(limit=40):
+    """Read recent durable reports and re-authorize only their existing paths."""
+    return read_reports(REPORT_LOG_PATH, limit, authorize_path)
 
 
 # Watch folder: polls a folder for new videos and auto-converts them using
@@ -536,12 +882,18 @@ def build_and_store_report(items, mode, strength, rate, settings, done, skipped,
 WATCH = {"enabled": False, "folder": "", "processed": 0}
 LAST_RUN = {"mode": "HEVC (smaller, delivery)", "strength": "Medium", "rate": "Match source"}
 _watch_sizes = {}   # path -> last-seen size, for a simple stability check
+WATCH_SERVICE = None
+SHUTDOWN_EVENT = threading.Event()
+NATIVE_WINDOW = None
+NATIVE_WEBVIEW = None
 
 
 def watch_tick():
     """One poll: queue+convert any new, size-stable video in the watched
     folder whose output doesn't already exist. No-ops if a batch is already
     running (manual or watch) or watching is off."""
+    if WATCH_SERVICE is not None:
+        return WATCH_SERVICE.tick()
     if not WATCH["enabled"] or not WATCH["folder"] or JOB.running:
         return
     folder = WATCH["folder"]
@@ -576,7 +928,8 @@ def watch_tick():
         del _watch_sizes[stale]
     if not ready:
         return
-    items = [{"path": p, "name": os.path.basename(p), "status": "Queued", "pct": ""} for p in ready]
+    items = [{"path": authorize_path(p), "name": os.path.basename(p), "status": "Queued", "pct": ""}
+             for p in ready]
     with JOB.lock:
         JOB.reset()
         JOB.running = True
@@ -586,12 +939,12 @@ def watch_tick():
 
 
 def watch_loop():
-    while True:
+    while not SHUTDOWN_EVENT.is_set():
         try:
             watch_tick()
         except Exception:
             pass
-        time.sleep(3)
+        SHUTDOWN_EVENT.wait(3)
 
 
 def hevc_rate_args(rate, settings, in_path):
@@ -610,27 +963,98 @@ def hevc_rate_args(rate, settings, in_path):
     return ["-crf", crf]       # "Quality (CRF)"
 
 
-def run_batch(items, mode, strength, rate, settings):
-    thr = STRENGTH_THR.get(strength)
-    if thr is None:
-        thr = str(settings.get("thr_custom", "0.03"))
-    is_prores = mode.startswith("ProRes")
+def estimate_export_bytes(item, mode, rate, settings):
+    info = probe_info(item["path"])
+    return estimate_export_bytes_pure(info, mode, rate, settings, mode_kind)
+
+
+def build_preflight(items, mode, strength, rate, settings):
     dest_dir = settings["dest_dir"] if settings["dest_mode"] == "custom" else ""
     suffix = settings["suffix"] or "_10bit"
-    overwrite = settings["on_exists"] == "overwrite"
-    pix_fmt = "yuv444p10le" if is_prores else "yuv420p10le"
-    filters = build_filters(thr, pix_fmt, settings["deband_range"],
-                            settings["deband_blur"], settings["dither"],
-                            settings.get("deflicker", False),
-                            settings.get("max_quality", False),
-                            settings.get("denoise", "off"))
+    rows, folders, total, reserved, folder_estimates = [], set(), 0, set(), {}
+    on_exists = settings.get("on_exists", "skip")
+    for it in items:
+        item_mode, item_strength, item_rate, override = normalise_job_params(it, mode, strength, rate)
+        local_settings = dict(settings)
+        if "target_mbps" in override:
+            try: local_settings["target_mbps"] = float(override["target_mbps"])
+            except (TypeError, ValueError): pass
+        base_out = make_output_path(it["path"], mode_kind(item_mode) == "prores", dest_dir,
+                                    str(it.get("output_suffix") or suffix))
+        collision = os.path.exists(base_out) or base_out in reserved
+        out = resolve_output_path(base_out, on_exists, reserved)
+        reserved.add(out)
+        estimate = estimate_export_bytes(it, item_mode, item_rate, local_settings)
+        total += estimate
+        folder = os.path.dirname(out); folders.add(folder)
+        folder_estimates[folder] = folder_estimates.get(folder, 0) + estimate
+        rows.append({"name": it.get("name", os.path.basename(it["path"])), "out": out,
+                     "format": format_label(item_mode), "strength": item_strength,
+                     "exists": collision, "renamed": out != base_out, "estimate": estimate})
+    disks, blocking, warnings = [], [], []
+    for folder in sorted(folders):
+        try:
+            base, writable = writable_parent(folder)
+            if not writable:
+                blocking.append(f"Cannot write to {folder}.")
+                continue
+            free = shutil.disk_usage(base).free
+            needed = folder_estimates.get(folder, 0)
+            disks.append({"folder": folder, "free": free, "needed": needed, "writable": True})
+            # Leave room for filesystem overhead and temporary files. Unknown
+            # CRF sizes remain warnings rather than false hard blocks.
+            if needed and needed * 1.1 > free:
+                blocking.append(f"Not enough free space in {folder}: need about {human_size(int(needed * 1.1))}, have {human_size(free)}.")
+            elif not needed:
+                warnings.append(f"Could not estimate final size for files exporting to {folder}.")
+        except OSError:
+            blocking.append(f"Could not inspect the export destination: {folder}.")
+    for it in items:
+        if not os.path.isfile(it.get("path", "")):
+            blocking.append(f"Source file is missing: {it.get('name', 'unknown file')}.")
+    return {"items": rows, "total_estimate": total, "disks": disks,
+            "collisions": [r["name"] for r in rows if r["exists"]],
+            "on_exists": on_exists, "blocking": blocking, "warnings": warnings,
+            "ready": not blocking}
+
+
+def set_dock_badge(text):
+    if not NATIVE_WINDOW:
+        return
+    try:
+        from AppKit import NSApp
+        NSApp.dockTile().setBadgeLabel_(text or None)
+    except Exception:
+        pass
+
+
+def run_batch(items, mode, strength, rate, settings, engine=DEFAULT_ENGINE):
+    if not ensure_bundled_ffmpeg(engine):
+        with JOB.lock:
+            JOB.summary = f"Could not start {engine.display_name}: bundled engine files are missing."
+            JOB.running = False
+        return
+    dest_dir = settings["dest_dir"] if settings["dest_mode"] == "custom" else ""
+    suffix = settings["suffix"] or "_10bit"
+    on_exists = settings.get("on_exists", "skip")
+    overwrite = on_exists == "overwrite"
+    reserved_outputs = set()
     total = len(items)
     done = failed = skipped = 0
     last_output = None
     stopped_after_current = False
+    keep_awake = KeepAwake()
     with JOB.lock:
         JOB.total = total
         JOB.started = time.time()
+    try:
+        # Keep the computer awake only while this user-initiated batch runs.
+        # The adapter uses caffeinate on macOS and SetThreadExecutionState on
+        # Windows; neither persists or changes the user's power settings.
+        keep_awake.start()
+    except Exception:
+        pass
+    set_dock_badge("0%")
 
     try:
         for idx, it in enumerate(items, start=1):
@@ -646,11 +1070,20 @@ def run_batch(items, mode, strength, rate, settings):
                 for j in range(idx - 1, len(items)):
                     _set_item(j, status="Skipped", pct="—")
                 break
+            temp_out_path = None
+            cmd = None
             try:
                 with JOB.lock:
                     JOB.index = idx
                 in_path = it["path"]
-                out_path = make_output_path(in_path, is_prores, dest_dir, suffix)
+                plan = CONVERSION_PLANNER.plan(it, mode, strength, rate, settings, engine)
+                item_mode, item_strength, item_rate = plan["mode"], plan["strength"], plan["rate"]
+                override, item_settings = plan["override"], plan["settings"]
+                kind, is_prores, filters = plan["kind"], plan["is_prores"], plan["filters"]
+                item_suffix = str(it.get("output_suffix") or suffix)
+                base_out_path = CONVERSION_PLANNER.output_path(in_path, is_prores, dest_dir, item_suffix)
+                out_path = resolve_output_path(base_out_path, on_exists, reserved_outputs)
+                reserved_outputs.add(out_path)
                 if dest_dir and not os.path.isdir(dest_dir):
                     try:
                         os.makedirs(dest_dir, exist_ok=True)
@@ -660,89 +1093,124 @@ def run_batch(items, mode, strength, rate, settings):
                     skipped += 1
                     _set_item(idx - 1, status="Skipped", pct="—")
                     continue
-                aud = audio_args(in_path, is_prores, settings.get("audio", "copy"))
-                col = color_args(in_path)
+                temp_out_path = staging_output_path(out_path)
+                aud, col, streams = plan["audio"], plan["colour"], plan["streams"]
+                subtitle_note = plan["subtitle_note"]
                 pre_cmd = None
                 if is_prores:
-                    cmd = ["ffmpeg", "-y", "-nostats", "-i", in_path, "-vf", filters,
+                    cmd = ["ffmpeg", "-y", "-nostats", "-i", in_path, *streams, "-vf", filters,
                            "-c:v", "prores_ks", "-profile:v", "4444", "-pix_fmt", "yuv444p10le",
                            *(["-c:a", "pcm_s16le"] if aud == ["-an"] else aud), *col,
-                           "-progress", "pipe:1", out_path]
+                           "-progress", "pipe:1", temp_out_path]
                 else:
-                    rate_args = hevc_rate_args(rate, settings, in_path)
-                    base = ["ffmpeg", "-y", "-nostats", "-i", in_path, "-vf", filters,
-                            "-c:v", "libx265", "-pix_fmt", "yuv420p10le", *rate_args,
-                            "-preset", str(settings["preset"])]
+                    rate_args = plan["rate_args"]
+                    encoder = "libx264" if kind == "h264" else "libx265"
+                    base = ["ffmpeg", "-y", "-nostats", "-i", in_path, *streams, "-vf", filters,
+                            "-c:v", encoder, "-pix_fmt", "yuv420p10le", *rate_args,
+                            "-preset", str(item_settings["preset"])]
                     # Two-pass only makes sense with a bitrate target (not CRF).
-                    two_pass = bool(settings.get("two_pass")) and "-b:v" in rate_args
+                    two_pass = bool(item_settings.get("two_pass")) and "-b:v" in rate_args
                     if two_pass:
                         stats = os.path.join(INTAKE_DIR, f"2pass_{idx}.log")
-                        pre_cmd = [*base, "-x265-params", f"pass=1:stats={stats}", "-an",
+                        pass_param = "-x264-params" if kind == "h264" else "-x265-params"
+                        # Pass one analyzes video only; carrying audio or text
+                        # subtitle streams into the null muxer is unnecessary
+                        # and can fail for otherwise valid source files.
+                        pre_base = ["ffmpeg", "-y", "-nostats", "-i", in_path, "-map", "0:v:0", "-vf", filters,
+                                    "-c:v", encoder, "-pix_fmt", "yuv420p10le", *rate_args,
+                                    "-preset", str(item_settings["preset"])]
+                        pre_cmd = [*pre_base, pass_param, f"pass=1:stats={stats}", "-an",
                                    "-f", "null", "-progress", "pipe:1", os.devnull]
-                        cmd = [*base, "-x265-params", f"pass=2:stats={stats}", "-tag:v", "hvc1",
-                               *aud, *col, "-progress", "pipe:1", out_path]
+                        codec_args = [pass_param, f"pass=2:stats={stats}"]
+                        if kind == "hevc":
+                            codec_args += ["-tag:v", "hvc1"]
+                        cmd = [*base, *codec_args, *aud, *col, "-movflags", "+faststart",
+                               "-progress", "pipe:1", temp_out_path]
                     else:
-                        cmd = [*base, "-tag:v", "hvc1", *aud, *col, "-progress", "pipe:1", out_path]
+                        codec_args = ["-tag:v", "hvc1"] if kind == "hevc" else []
+                        cmd = [*base, *codec_args, *aud, *col, "-movflags", "+faststart",
+                               "-progress", "pipe:1", temp_out_path]
                 src_bits = pixfmt_bits(probe_pix_fmt(in_path))
                 dur = probe_duration(in_path)
                 name = it["name"]
-                _set_item(idx - 1, status="Running", pct="0%")
+                profile = f"{format_label(item_mode)} · {item_strength} deband"
+                profile += " · codec-managed" if is_prores else f" · {item_rate}"
+                with JOB.lock:
+                    JOB.current_path = in_path
+                _set_item(idx - 1, status="Running", pct="0%", profile=profile)
 
                 # Pass 1 (two-pass only): analysis pass, discarded output.
                 if pre_cmd is not None:
                     with JOB.lock:
                         JOB.now = {"file": f"[{idx}/{total}]  {name} — pass 1/2 (analyzing)",
-                                   "pct": 0, "frame": "", "fps": "", "speed": "", "eta": "--:--"}
+                                   "pct": 0, "frame": "", "fps": "", "speed": "", "eta": "--:--", "sec": 0}
                     e1 = _run_ffmpeg(pre_cmd, dur, idx - 1)
                     if not JOB.cancel.is_set() and e1 is not None:
                         failed += 1
-                        _set_item(idx - 1, status="Failed", pct="—", error=e1)
+                        mark_item_failed(idx - 1, name, e1, pre_cmd, temp_out_path)
                         continue
 
                 err = None
                 if not JOB.cancel.is_set():
                     with JOB.lock:
                         JOB.now = {"file": f"[{idx}/{total}]  {name}" + (" — pass 2/2" if pre_cmd else ""),
-                                   "pct": 0, "frame": "", "fps": "", "speed": "", "eta": "--:--"}
+                                   "pct": 0, "frame": "", "fps": "", "speed": "", "eta": "--:--", "sec": 0}
                     err = _run_ffmpeg(cmd, dur, idx - 1)
                 if JOB.cancel.is_set():
                     try:
-                        if os.path.exists(out_path):
-                            os.remove(out_path)
+                        if os.path.exists(temp_out_path):
+                            os.remove(temp_out_path)
                     except OSError:
                         pass
                     _set_item(idx - 1, status="Cancelled", pct="—")
                     break
                 if err is not None:
                     failed += 1
-                    _set_item(idx - 1, status="Failed", pct="—", error=err)
+                    mark_item_failed(idx - 1, name, err, cmd, temp_out_path)
                     continue
+                if pixfmt_bits(probe_pix_fmt(temp_out_path)) < 10:
+                    failed += 1
+                    mark_item_failed(idx - 1, name,
+                                     "Output verification failed: not a 10-bit video stream.",
+                                     cmd, temp_out_path)
+                    continue
+                os.replace(temp_out_path, out_path)
                 done += 1
                 last_output = out_path
+                authorize_path(out_path)
                 info = verify_output(out_path)
+                if subtitle_note:
+                    info += f" · {subtitle_note}"
                 if src_bits >= 10:
                     info = f"source was {src_bits}-bit (deband only) · " + info
 
                 # Dual export: alongside the ProRes master, also cut a small
                 # HEVC preview from the same filter chain — useful for quick
                 # review/sharing without opening the (huge) grading master.
-                if is_prores and settings.get("dual_export") and not JOB.cancel.is_set():
-                    preview_path = make_output_path(in_path, False, dest_dir, suffix + "_preview")
+                if is_prores and item_settings.get("dual_export") and not JOB.cancel.is_set():
+                    preview_path = make_output_path(in_path, False, dest_dir, item_suffix + "_preview")
+                    preview_path = resolve_output_path(preview_path, on_exists, reserved_outputs)
+                    reserved_outputs.add(preview_path)
                     if not (os.path.exists(preview_path) and not overwrite):
+                        temp_preview_path = staging_output_path(preview_path)
                         with JOB.lock:
                             JOB.now = {"file": f"[{idx}/{total}]  {name} — HEVC preview",
-                                       "pct": 0, "frame": "", "fps": "", "speed": "", "eta": "--:--"}
-                        pv_aud = audio_args(in_path, False, settings.get("audio", "copy"))
-                        pv_cmd = ["ffmpeg", "-y", "-nostats", "-i", in_path, "-vf", filters,
+                                       "pct": 0, "frame": "", "fps": "", "speed": "", "eta": "--:--", "sec": 0}
+                        pv_aud = audio_args(in_path, False, item_settings.get("audio", "copy"))
+                        pv_cmd = ["ffmpeg", "-y", "-nostats", "-i", in_path, *streams, "-vf", filters,
                                   "-c:v", "libx265", "-pix_fmt", "yuv420p10le", "-crf", "20",
                                   "-preset", "veryfast", "-tag:v", "hvc1", *pv_aud, *col,
-                                  "-progress", "pipe:1", preview_path]
+                                  "-progress", "pipe:1", temp_preview_path]
                         # item_idx=-1: the preview isn't tracked as its own row,
                         # so route progress updates only to JOB.now, not a row.
                         pv_err = _run_ffmpeg(pv_cmd, dur, -1)
-                        if pv_err is None and os.path.isfile(preview_path):
+                        if pv_err is None and os.path.isfile(temp_preview_path):
+                            os.replace(temp_preview_path, preview_path)
+                            authorize_path(preview_path)
                             info += f" · preview: {os.path.basename(preview_path)} ({verify_output(preview_path)})"
                         else:
+                            try: os.remove(temp_preview_path)
+                            except OSError: pass
                             info += " · preview export failed"
 
                 _set_item(idx - 1, status="Done", pct="100%", info=info, out=out_path)
@@ -751,7 +1219,8 @@ def run_batch(items, mode, strength, rate, settings):
                 # would otherwise never be reset) or take down the worker thread
                 # silently — mark this item Failed and move on to the next.
                 failed += 1
-                _set_item(idx - 1, status="Failed", pct="—", error=f"Unexpected error: {e}")
+                mark_item_failed(idx - 1, it.get("name", "export"),
+                                 f"Unexpected error: {e}", locals().get("cmd"), temp_out_path)
                 continue
     finally:
         cancelled = JOB.cancel.is_set()
@@ -769,15 +1238,22 @@ def run_batch(items, mode, strength, rate, settings):
         with JOB.lock:
             JOB.running = False
             JOB.summary = summary
-            JOB.now = {"file": "—", "pct": 0, "frame": "", "fps": "", "speed": "", "eta": "--:--"}
+            JOB.now = {"file": "—", "pct": 0, "frame": "", "fps": "", "speed": "", "eta": "--:--", "sec": 0}
+            JOB.current_path = ""
+        keep_awake.stop()
+        set_dock_badge(None)
         if items:
             build_and_store_report(items, mode, strength, rate, settings,
-                                   done, skipped, failed, cancelled, started_at)
+                                   done, skipped, failed, cancelled, started_at, engine)
         if last_output and not cancelled:
-            subprocess.run(["open", "-R", last_output])
+            reveal_files([last_output])
         if items and not cancelled:
             noun = "file" if len(items) == 1 else "files"
             notify_completion("8-bit → 10-bit Converter", f"{summary} ({len(items)} {noun} in batch)")
+
+
+WATCH_SERVICE = WatchService(JOB, WATCH, LAST_RUN, VIDEO_EXTS, authorize_path,
+                             load_settings, make_output_path, run_batch)
 
 
 def _set_item(i, **kw):
@@ -787,34 +1263,20 @@ def _set_item(i, **kw):
 
 
 def _run_ffmpeg(cmd, dur, item_idx):
-    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                            text=True, bufsize=1)
+    def on_process(proc):
+        with JOB.lock:
+            JOB.proc = proc
 
-    def _watch():
-        while proc.poll() is None:
-            if JOB.cancel.wait(0.2):
-                proc.kill()
-                return
-    threading.Thread(target=_watch, daemon=True).start()
+    def on_progress(cur):
+        _emit(cur, dur, item_idx)
 
-    cur = {}
-    for line in proc.stdout:
-        if JOB.cancel.is_set():
-            proc.kill()
-            break
-        line = line.strip()
-        if "=" not in line:
-            continue
-        k, v = line.split("=", 1)
-        cur[k] = v
-        if k == "progress":
-            _emit(cur, dur, item_idx)
-            cur = {}
-    proc.wait()
-    if proc.returncode not in (0, None) and not JOB.cancel.is_set():
-        err = proc.stderr.read() if proc.stderr else ""
-        return err[-600:] if err else f"ffmpeg exited with code {proc.returncode}"
-    return None
+    try:
+        return run_ffmpeg(cmd, JOB.cancel, on_progress=on_progress, on_process=on_process,
+                          inactivity_timeout=120)
+    finally:
+        with JOB.lock:
+            if getattr(JOB, "proc", None) is not None and JOB.proc.poll() is not None:
+                JOB.proc = None
 
 
 def _emit(cur, dur, item_idx):
@@ -835,18 +1297,106 @@ def _emit(cur, dur, item_idx):
     with JOB.lock:
         JOB.now = {"file": JOB.now.get("file", "—"), "pct": round(pct),
                    "frame": cur.get("frame", ""), "fps": cur.get("fps", ""),
-                   "speed": speed, "eta": fmt_time(eta)}
+                   "speed": speed, "eta": fmt_time(eta), "sec": round(secs, 3)}
+        if JOB.total:
+            overall = ((JOB.index - 1) + pct / 100) / JOB.total * 100
+            if int(overall) % 5 == 0:
+                set_dock_badge(f"{int(overall)}%")
         if item_idx is not None and 0 <= item_idx < len(JOB.items):
             JOB.items[item_idx]["pct"] = f"{pct:.0f}%"
 
 
-# ------------------------------------------------------------------ scopes
-SCOPES = {}   # token -> dir
-FILMSTRIPS = {}  # token -> dir
+# ------------------------------------------------------------------ previews
+# PreviewService owns short-lived scope/compare/filmstrip artifacts.  The
+# server only validates requests and serves the already-rendered image bytes.
+PREVIEWS = PreviewService(INTAKE_DIR, authorize_path, DEFAULT_ENGINE,
+                          deband_noise_chain, build_filters)
+SCOPES = {}   # Legacy aliases retained until the next source-only cleanup.
+FILMSTRIPS = {}
+
+
+def _png_chunk(kind, data):
+    return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data) & 0xffffffff)
+
+
+def write_rgb_png(path, width, height, pixels):
+    """Write an RGB PNG without adding a runtime dependency to the app."""
+    rows = b"".join(b"\0" + pixels[y * width * 3:(y + 1) * width * 3] for y in range(height))
+    payload = (b"\x89PNG\r\n\x1a\n" + _png_chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0))
+               + _png_chunk(b"IDAT", zlib.compress(rows, 6)) + _png_chunk(b"IEND", b""))
+    with open(path, "wb") as f:
+        f.write(payload)
+
+
+def render_histogram(rgb, sample_width, sample_height, out_path):
+    """Draw a clean, high-resolution RGB histogram from the actual scope frame.
+
+    FFmpeg's histogram filter is useful but its panel layout varies by build and
+    was producing low-detail blocks. This is deliberately a Resolve-style
+    three-channel readout: log-scaled data, consistent grid, and no resampling.
+    """
+    width, height = 1600, 900
+    pixels = bytearray(width * height * 3)
+    for i in range(0, len(pixels), 3):
+        pixels[i:i + 3] = b"\x05\x07\x0a"
+
+    def px(x, y, colour):
+        if 0 <= x < width and 0 <= y < height:
+            off = (y * width + x) * 3
+            pixels[off:off + 3] = bytes(colour)
+
+    left, right, top, bottom = 52, 18, 20, 30
+    plot_w, plot_h = width - left - right, height - top - bottom
+    panel_h = plot_h // 3
+    grid = (78, 62, 10)
+    colours = ((255, 72, 72), (70, 230, 112), (80, 145, 255))
+    bins = [[0] * 256 for _ in range(3)]
+    for i in range(0, min(len(rgb), sample_width * sample_height * 3), 3):
+        bins[0][rgb[i]] += 1
+        bins[1][rgb[i + 1]] += 1
+        bins[2][rgb[i + 2]] += 1
+    for channel in range(3):
+        y0 = top + channel * panel_h
+        y1 = top + (channel + 1) * panel_h - 8
+        for level in range(5):
+            y = y0 + round((y1 - y0) * level / 4)
+            for x in range(left, width - right):
+                px(x, y, grid)
+        for level in range(9):
+            x = left + round(plot_w * level / 8)
+            for y in range(y0, y1 + 1):
+                px(x, y, grid)
+        peak = max(bins[channel]) or 1
+        peak_log = math.log1p(peak)
+        dim = tuple(max(1, c // 4) for c in colours[channel])
+        for level, count in enumerate(bins[channel]):
+            x = left + round(level * plot_w / 255)
+            value = math.log1p(count) / peak_log
+            y = y1 - round(value * (y1 - y0 - 8))
+            for fy in range(y, y1 + 1):
+                px(x, fy, dim)
+            for yy in range(max(y0, y - 1), min(y1 + 1, y + 2)):
+                px(x, yy, colours[channel])
+    write_rgb_png(out_path, width, height, pixels)
+
+
+def scope_rgb_frame(in_path, t, vf, source_info):
+    """Extract a deterministic RGB sample for the custom histogram."""
+    src_w, src_h = source_info.get("width") or 1920, source_info.get("height") or 1080
+    sample_w = max(2, min(960, src_w) // 2 * 2)
+    sample_h = max(2, round(src_h * sample_w / src_w) // 2 * 2)
+    filters = ",".join(part for part in (vf, f"scale={sample_w}:{sample_h}:flags=lanczos", "format=rgb24") if part)
+    result = subprocess.run(["ffmpeg", "-v", "error", "-ss", f"{t}", "-i", in_path, "-frames:v", "1",
+                             "-vf", filters, "-f", "rawvideo", "-pix_fmt", "rgb24", "-"],
+                            capture_output=True)
+    expected = sample_w * sample_h * 3
+    if result.returncode != 0 or len(result.stdout) != expected:
+        raise RuntimeError(result.stderr.decode(errors="replace").strip() or "could not read frame pixels")
+    return result.stdout, sample_w, sample_h
 
 
 def render_scopes(in_path, strength, settings, t=None):
-    thr = STRENGTH_THR.get(strength) or str(settings.get("thr_custom", "0.03"))
+    thr = DEFAULT_ENGINE.threshold_for(strength, settings.get("thr_custom", "0.03"))
     chain = deband_noise_chain(thr, settings["deband_range"], settings["deband_blur"],
                                settings["dither"], settings.get("deflicker", False),
                                settings.get("max_quality", False), settings.get("denoise", "off"))
@@ -855,19 +1405,26 @@ def render_scopes(in_path, strength, settings, t=None):
     if t is None:
         t = max(0.0, dur * 0.4) if dur else 1.0
     t = max(0.0, min(float(t), max(0.0, dur - 0.05))) if dur else float(t)
-    # The `histogram`/`waveform` filters can SIGSEGV on some pixel formats
-    # (e.g. the 16-bit 4:4:4 frame Max quality inserts, or raw RGBA). Preview
-    # scopes are for visual comparison only, so downconvert to 8-bit right
-    # before them — this doesn't affect the "after" thumbnail or the real
-    # encode, only this diagnostic view.
-    jobs = {
-        "src_thumb": "scale=440:-2",
-        "src_hist": "histogram=level_height=170,scale=440:-2",
-        "src_wave": "format=yuv420p,waveform=mode=column:intensity=0.6,scale=440:-2",
-        "aft_thumb": f"{chain},scale=440:-2",
-        "aft_hist": f"{chain},format=yuv420p,histogram=level_height=170,scale=440:-2",
-        "aft_wave": f"{chain},format=yuv420p,waveform=mode=column:intensity=0.6,scale=440:-2",
-    }
+    # A 1280px source sample feeds 1600px presentation scopes. This keeps the
+    # reading detailed on a Retina panel without turning a single preview into
+    # a full-resolution re-encode. The scope filters are genuine waveform/
+    # parade/vectorscope analysis of that selected source or processed frame.
+    sample = "scale=w='min(1280,iw)':h=-2:flags=lanczos"
+    source_prefix = sample
+    after_prefix = f"{chain},{sample}"
+    jobs = {}
+    for prefix, filters in (("src", source_prefix), ("aft", after_prefix)):
+        jobs[f"{prefix}_waveform"] = (
+            f"{filters},format=yuv444p,waveform=mode=column:display=overlay:components=1:"
+            "filter=lowpass:scale=ire:graticule=orange:opacity=0.8:intensity=0.15:mirror=0,"
+            "scale=1600:900:flags=lanczos")
+        jobs[f"{prefix}_parade"] = (
+            f"{filters},format=gbrp,waveform=mode=column:display=parade:components=7:"
+            "filter=color:scale=ire:graticule=orange:opacity=0.8:intensity=0.15:mirror=0,"
+            "scale=1600:900:flags=lanczos")
+        jobs[f"{prefix}_vectorscope"] = (
+            f"{filters},format=yuv444p,vectorscope=mode=color3:colorspace=709:intensity=0.18:"
+            "graticule=color:opacity=0.8,scale=1200:1200:flags=lanczos")
     errors = {}
     for which, vf in jobs.items():
         r = subprocess.run(["ffmpeg", "-y", "-v", "error", "-ss", f"{t}", "-i", in_path,
@@ -876,13 +1433,47 @@ def render_scopes(in_path, strength, settings, t=None):
         out_file = os.path.join(outdir, which + ".png")
         if r.returncode != 0 or not os.path.isfile(out_file):
             errors[which] = r.stderr.strip() or f"ffmpeg exited {r.returncode}"
+    source_info = probe_info(in_path)
+    for prefix, filters in (("src", source_prefix), ("aft", after_prefix)):
+        try:
+            rgb, width, height = scope_rgb_frame(in_path, t, filters, source_info)
+            render_histogram(rgb, width, height, os.path.join(outdir, f"{prefix}_histogram.png"))
+        except Exception as e:
+            errors[f"{prefix}_histogram"] = str(e)
     token = os.path.basename(outdir)
     SCOPES[token] = outdir
     return token, errors, t, dur
 
 
+def render_processed_sample(in_path, strength, settings, t=None):
+    """Render a short, representative HEVC Main10 sample for the inspector.
+
+    This is deliberately user-triggered: it never competes with a full batch
+    encode, and it uses the same deband/dither chain as conversion.
+    """
+    dur = probe_duration(in_path)
+    length = min(3.0, dur) if dur else 3.0
+    if t is None:
+        t = dur * 0.4 if dur else 0.0
+    t = max(0.0, min(float(t), max(0.0, dur - length))) if dur else max(0.0, float(t))
+    thr = DEFAULT_ENGINE.threshold_for(strength, settings.get("thr_custom", "0.03"))
+    filters = build_filters(thr, "yuv420p10le", settings["deband_range"],
+                            settings["deband_blur"], settings["dither"],
+                            settings.get("deflicker", False),
+                            settings.get("max_quality", False), settings.get("denoise", "off"))
+    out_path = os.path.join(INTAKE_DIR, f"processed_sample_{uuid.uuid4().hex}.mp4")
+    cmd = ["ffmpeg", "-y", "-v", "error", "-ss", f"{t:.3f}", "-i", in_path,
+           "-t", f"{length:.3f}", "-map", "0:v:0", "-an", "-vf", filters,
+           "-c:v", "libx265", "-pix_fmt", "yuv420p10le", "-preset", "veryfast",
+           "-crf", "18", "-tag:v", "hvc1", "-movflags", "+faststart", out_path]
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=90)
+    if result.returncode or not os.path.isfile(out_path):
+        raise RuntimeError(result.stderr.strip() or "FFmpeg could not render the sample")
+    return authorize_path(out_path), round(t, 2), round(length, 2)
+
+
 def render_filmstrip(in_path, count=8):
-    """N evenly-spaced thumbnails across the clip so the user can click to
+    """N evenly-spaced frames across the clip so the user can click to
     pick the frame most likely to show banding, instead of a fixed timestamp."""
     outdir = tempfile.mkdtemp(prefix="strip_")
     dur = probe_duration(in_path)
@@ -940,6 +1531,29 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, *a):
         pass
 
+    def _expected_origin(self):
+        host, port = self.server.server_address[:2]
+        return f"http://{host}:{port}"
+
+    def _request_is_trusted(self, parsed):
+        """Keep an unguessable local session separate from arbitrary localhost tabs."""
+        expected = self._expected_origin()
+        host = self.headers.get("Host", "")
+        if host != expected.removeprefix("http://"):
+            self._send(403, {"error": "invalid host"})
+            return False
+        origin = self.headers.get("Origin")
+        if origin and origin != expected:
+            self._send(403, {"error": "invalid origin"})
+            return False
+        if parsed.path.startswith("/api/"):
+            query_token = urllib.parse.parse_qs(parsed.query).get("auth", [""])[0]
+            request_token = self.headers.get("X-10bit-Token", "")
+            if not secrets.compare_digest(request_token or query_token, API_TOKEN):
+                self._send(403, {"error": "invalid session"})
+                return False
+        return True
+
     def _send(self, code, body, ctype="application/json"):
         if isinstance(body, (dict, list)):
             body = json.dumps(body).encode()
@@ -948,6 +1562,9 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(code)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "private, max-age=86400" if ctype == "image/jpeg" else "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Referrer-Policy", "no-referrer")
         self.end_headers()
         self.wfile.write(body)
 
@@ -955,21 +1572,104 @@ class Handler(BaseHTTPRequestHandler):
         n = int(self.headers.get("Content-Length", 0))
         if not n:
             return {}
+        if n > 1024 * 1024:
+            return {}
         try:
             return json.loads(self.rfile.read(n).decode())
         except Exception:
             return {}
 
+    def _serve_media(self, path):
+        """Range-aware local media serving so the native WebKit player can seek."""
+        try:
+            size = os.path.getsize(path)
+            start, end = 0, size - 1
+            raw_range = self.headers.get("Range", "")
+            if raw_range.startswith("bytes="):
+                left, _, right = raw_range[6:].partition("-")
+                start = int(left) if left else 0
+                end = int(right) if right else end
+                start, end = max(0, start), min(size - 1, end)
+            length = end - start + 1
+            ext = os.path.splitext(path)[1].lower()
+            ctype = {".mp4": "video/mp4", ".m4v": "video/mp4", ".mov": "video/quicktime", ".webm": "video/webm"}.get(ext, "video/mp4")
+            self.send_response(206 if raw_range else 200)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Content-Length", str(length))
+            self.send_header("Accept-Ranges", "bytes")
+            if raw_range:
+                self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            with open(path, "rb") as f:
+                f.seek(start)
+                remaining = length
+                while remaining:
+                    data = f.read(min(1024 * 1024, remaining))
+                    if not data:
+                        break
+                    self.wfile.write(data)
+                    remaining -= len(data)
+        except (OSError, ValueError, BrokenPipeError):
+            pass
     def do_GET(self):
         u = urllib.parse.urlparse(self.path)
+        if not self._request_is_trusted(u):
+            return
         if u.path in ("/", "/index.html"):
             try:
                 with open(os.path.join(HERE, "index.html"), "rb") as f:
-                    self._send(200, f.read(), "text/html; charset=utf-8")
+                    page = f.read().decode("utf-8")
+                bootstrap = (
+                    f'const API_TOKEN = {json.dumps(API_TOKEN)}; '
+                    f'const NATIVE_SHELL = {json.dumps(bool(NATIVE_WINDOW))};'
+                )
+                page = page.replace('const API = "";', f'const API = ""; {bootstrap}', 1)
+                self._send(200, page, "text/html; charset=utf-8")
             except OSError:
                 self._send(500, "index.html missing", "text/plain")
+        elif u.path == "/JZB.png":
+            try:
+                with open(os.path.join(HERE, "JZB.png"), "rb") as f:
+                    self._send(200, f.read(), "image/png")
+            except OSError:
+                self._send(404, "app icon missing", "text/plain")
+        elif u.path.startswith("/ui/"):
+            # Focused browser modules are static, same-origin assets. Keep the
+            # route constrained to toolkit/ui so a malformed URL cannot read a
+            # neighboring file from the app bundle.
+            rel = urllib.parse.unquote(u.path[len("/ui/"):])
+            root = os.path.realpath(os.path.join(HERE, "ui"))
+            fp = os.path.realpath(os.path.join(root, rel))
+            if not fp.startswith(root + os.sep) or not fp.endswith(".js"):
+                self._send(404, "not found", "text/plain")
+            else:
+                try:
+                    with open(fp, "rb") as f:
+                        self._send(200, f.read(), "application/javascript; charset=utf-8")
+                except OSError:
+                    self._send(404, "not found", "text/plain")
         elif u.path == "/api/status":
             self._send(200, JOB.snapshot())
+        elif u.path == "/api/engines":
+            ensure_bundled_ffmpeg()
+            ffmpeg_name = ffmpeg_tool_names()[0]
+            default_ffmpeg = os.path.join(bundled_ffmpeg_dir() or "", ffmpeg_name) or (shutil.which("ffmpeg") or "ffmpeg")
+            optional_dir = bundled_engine_dir(LIBPLACEBO_ENGINE)
+            optional_ffmpeg = os.path.join(optional_dir, ffmpeg_name) if optional_dir else default_ffmpeg
+            self._send(200, {"engines": engine_catalog(default_ffmpeg, optional_ffmpeg)})
+        elif u.path == "/api/running-preview":
+            jpeg = running_preview_jpeg()
+            if jpeg:
+                self._send(200, jpeg, "image/jpeg")
+            else:
+                self._send(404, "no active preview", "text/plain")
+        elif u.path == "/api/media":
+            path = urllib.parse.parse_qs(u.query).get("path", [""])[0]
+            if path and is_authorized_path(path) and os.path.isfile(path):
+                self._serve_media(path)
+            else:
+                self._send(404, "media unavailable", "text/plain")
         elif u.path == "/api/settings":
             self._send(200, load_settings())
         elif u.path == "/api/presets":
@@ -978,14 +1678,15 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, dict(WATCH))
         elif u.path == "/api/report":
             self._send(200, dict(LAST_REPORT))
+        elif u.path == "/api/history":
+            self._send(200, {"reports": load_history()})
         elif u.path in ("/api/scope", "/api/compare-image", "/api/filmstrip-image"):
             q = urllib.parse.parse_qs(u.query)
             token = q.get("token", [""])[0]
             which = q.get("which", [""])[0]
-            store = {"/api/scope": SCOPES, "/api/compare-image": COMPARE,
-                     "/api/filmstrip-image": FILMSTRIPS}[u.path]
-            d = store.get(token)
-            fp = os.path.join(d, os.path.basename(which) + ".png") if d else None
+            kind = {"/api/scope": "scope", "/api/compare-image": "compare",
+                    "/api/filmstrip-image": "filmstrip"}[u.path]
+            fp = PREVIEWS.image_path(kind, token, which)
             if fp and os.path.isfile(fp):
                 with open(fp, "rb") as f:
                     self._send(200, f.read(), "image/png")
@@ -996,12 +1697,41 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         u = urllib.parse.urlparse(self.path)
+        if not self._request_is_trusted(u):
+            return
         if u.path == "/api/pick-files":
             paths = pick_files()
-            self._send(200, [item_for(p) for p in paths if p.lower().endswith(VIDEO_EXTS)])
+            self._send(200, [queue_stub(p) for p in paths if p.lower().endswith(VIDEO_EXTS)])
         elif u.path == "/api/pick-folder":
             paths = pick_folder()
-            self._send(200, [item_for(p) for p in paths])
+            self._send(200, [queue_stub(p) for p in paths])
+        elif u.path == "/api/pick-folder-path":
+            self._send(200, {"folder": pick_folder_path("Select an output folder")})
+        elif u.path == "/api/add-native-path":
+            path = self._read_json().get("path", "")
+            if not NATIVE_WINDOW or not path.lower().endswith(VIDEO_EXTS) or not os.path.isfile(path):
+                self._send(400, {"error": "invalid native drop"})
+                return
+            self._send(200, queue_stub(path))
+        elif u.path == "/api/probe":
+            path = self._read_json().get("path", "")
+            if not path or not is_authorized_path(path) or not os.path.isfile(path):
+                self._send(404, {"error": "file not found"})
+                return
+            self._send(200, item_for(path))
+        elif u.path == "/api/restore-queue":
+            restored = []
+            for it in self._read_json().get("items", []):
+                path = it.get("path", "")
+                if not path.lower().endswith(VIDEO_EXTS) or not os.path.isfile(path):
+                    continue
+                item = item_for(path)
+                if isinstance(it.get("override"), dict):
+                    item["override"] = it["override"]
+                if isinstance(it.get("output_suffix"), str) and len(it["output_suffix"]) <= 80:
+                    item["output_suffix"] = it["output_suffix"]
+                restored.append(item)
+            self._send(200, {"items": restored})
         elif u.path == "/api/upload":
             q = urllib.parse.parse_qs(u.query)
             name = os.path.basename(q.get("name", ["dropped"])[0]) or "dropped"
@@ -1056,23 +1786,48 @@ class Handler(BaseHTTPRequestHandler):
         elif u.path == "/api/check-overwrites":
             data = self._read_json()
             settings = load_settings()
-            is_prores = data.get("mode", "HEVC").startswith("ProRes")
             dest_dir = settings["dest_dir"] if settings["dest_mode"] == "custom" else ""
             suffix = settings["suffix"] or "_10bit"
             existing = []
             for it in data.get("items", []):
                 path = it.get("path")
-                if not path:
+                if not path or not is_authorized_path(path):
                     continue
-                out = make_output_path(path, is_prores, dest_dir, suffix)
+                item_mode, _, _, _ = normalise_job_params(
+                    it, data.get("mode", "HEVC (smaller, delivery)"),
+                    data.get("strength", "Medium"), data.get("rate", "Match source"))
+                is_prores = mode_kind(item_mode) == "prores"
+                item_suffix = str(it.get("output_suffix") or suffix)
+                out = make_output_path(path, is_prores, dest_dir, item_suffix)
                 if os.path.exists(out):
                     existing.append(it.get("name", os.path.basename(path)))
             self._send(200, {"existing": existing})
+        elif u.path == "/api/preflight":
+            data = self._read_json()
+            items = [it for it in data.get("items", []) if it.get("path") and is_authorized_path(it["path"])]
+            if not items:
+                self._send(400, {"error": "no valid files"})
+                return
+            self._send(200, build_preflight(items, data.get("mode", "HEVC (smaller, delivery)"),
+                                             data.get("strength", "Medium"), data.get("rate", "Match source"),
+                                             load_settings()))
         elif u.path == "/api/convert":
             data = self._read_json()
+            ensure_bundled_ffmpeg()
+            default_ffmpeg = os.path.join(bundled_ffmpeg_dir() or "", "ffmpeg") or (shutil.which("ffmpeg") or "ffmpeg")
+            optional_dir = bundled_engine_dir(LIBPLACEBO_ENGINE)
+            optional_ffmpeg = os.path.join(optional_dir, "ffmpeg") if optional_dir else default_ffmpeg
+            requested, reason = requested_engine(data.get("engine"), default_ffmpeg, optional_ffmpeg)
+            if requested is None:
+                self._send(409, {"error": reason})
+                return
             items = [{"path": it["path"], "name": it.get("name", os.path.basename(it["path"])),
-                      "status": "Queued", "pct": ""} for it in data.get("items", [])
-                     if it.get("path")]
+                      "status": "Queued", "pct": "", "override": it.get("override")
+                      if isinstance(it.get("override"), dict) else None,
+                      "output_suffix": it.get("output_suffix") if isinstance(it.get("output_suffix"), str)
+                      and len(it.get("output_suffix")) <= 80 else ""}
+                     for it in data.get("items", [])
+                     if it.get("path") and is_authorized_path(it["path"])]
             if not items:
                 self._send(400, {"error": "no items"})
                 return
@@ -1087,7 +1842,7 @@ class Handler(BaseHTTPRequestHandler):
             rate = data.get("rate", "Match source")
             LAST_RUN["mode"], LAST_RUN["strength"], LAST_RUN["rate"] = mode, strength, rate
             threading.Thread(target=run_batch, args=(items, mode, strength, rate,
-                             load_settings()), daemon=True).start()
+                             load_settings(), requested), daemon=True).start()
             self._send(200, {"ok": True})
         elif u.path == "/api/watch":
             data = self._read_json()
@@ -1108,40 +1863,69 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, {"ok": True})
         elif u.path == "/api/reveal":
             path = self._read_json().get("path")
-            if path and os.path.exists(path):
-                subprocess.Popen(["open", "-R", path])
-                self._send(200, {"ok": True})
+            if path and is_authorized_path(path) and os.path.exists(path):
+                self._send(200, {"ok": reveal_files([path])})
             else:
                 self._send(404, {"error": "not found"})
+        elif u.path == "/api/reveal-log":
+            path = self._read_json().get("path")
+            if path and is_authorized_path(path) and os.path.isfile(path):
+                self._send(200, {"ok": reveal_files([path])})
+            else:
+                self._send(404, {"error": "failure log not found"})
+        elif u.path == "/api/reveal-all":
+            with JOB.lock:
+                paths = [it.get("out") for it in JOB.items if it.get("out") and os.path.exists(it.get("out"))]
+            if paths:
+                reveal_files(paths)
+            self._send(200, {"ok": bool(paths), "count": len(paths)})
+        elif u.path == "/api/processed-sample":
+            data = self._read_json()
+            path = data.get("path")
+            with JOB.lock:
+                encoding = JOB.running
+            if encoding:
+                self._send(409, {"error": "Processed samples pause while an export is running."})
+                return
+            if not path or not is_authorized_path(path) or not os.path.isfile(path):
+                self._send(400, {"error": "file not found"})
+                return
+            try:
+                sample, t, duration = PREVIEWS.render_processed_sample(
+                    path, data.get("strength", "Medium"), load_settings(), data.get("t"))
+                self._send(200, {"path": sample, "t": t, "duration": duration})
+            except (RuntimeError, subprocess.TimeoutExpired) as exc:
+                self._send(500, {"error": str(exc) or "sample render timed out"})
         elif u.path == "/api/scopes":
             data = self._read_json()
             path = data.get("path")
-            if not path or not os.path.isfile(path):
+            if not path or not is_authorized_path(path) or not os.path.isfile(path):
                 self._send(400, {"error": "file not found"})
                 return
-            token, errors, t, dur = render_scopes(path, data.get("strength", "Medium"),
+            token, errors, t, dur = PREVIEWS.render_scopes(path, data.get("strength", "Medium"),
                                                    load_settings(), data.get("t"))
             self._send(200, {"token": token, "name": os.path.basename(path),
                              "errors": errors, "t": t, "duration": dur})
         elif u.path == "/api/filmstrip":
             data = self._read_json()
             path = data.get("path")
-            if not path or not os.path.isfile(path):
+            if not path or not is_authorized_path(path) or not os.path.isfile(path):
                 self._send(400, {"error": "file not found"})
                 return
-            token, times = render_filmstrip(path, int(data.get("count", 8)))
+            token, times = PREVIEWS.render_filmstrip(path, int(data.get("count", 8)))
             self._send(200, {"token": token, "times": times})
         elif u.path == "/api/banding-meter":
             data = self._read_json()
             path = data.get("path")
-            if not path or not os.path.isfile(path):
+            if not path or not is_authorized_path(path) or not os.path.isfile(path):
                 self._send(400, {"error": "file not found"})
                 return
             self._send(200, analyze_banding(path))
         elif u.path == "/api/compare":
             data = self._read_json()
             src, out = data.get("src"), data.get("out")
-            if not (src and out and os.path.isfile(src) and os.path.isfile(out)):
+            if not (src and out and is_authorized_path(src) and is_authorized_path(out)
+                    and os.path.isfile(src) and os.path.isfile(out)):
                 self._send(400, {"error": "files not found"})
                 return
             dur = probe_duration(src)
@@ -1151,7 +1935,7 @@ class Handler(BaseHTTPRequestHandler):
             t = float(t)
             if dur:
                 t = max(0.0, min(t, max(0.0, dur - 0.05)))
-            token = render_compare(src, out, t, data.get("zoom"))
+            token = PREVIEWS.render_compare(src, out, t, data.get("zoom"))
             self._send(200, {"token": token, "duration": dur, "t": t})
         else:
             self._send(404, {"error": "unknown"})
@@ -1159,44 +1943,121 @@ class Handler(BaseHTTPRequestHandler):
 
 def cleanup_temp():
     """Remove intake uploads + scope/compare/filmstrip frame dirs on exit."""
+    PREVIEWS.cleanup()
     for d in [INTAKE_DIR, *SCOPES.values(), *COMPARE.values(), *FILMSTRIPS.values()]:
         shutil.rmtree(d, ignore_errors=True)
 
 
-def main():
-    ensure_bundled_ffmpeg()
-    atexit.register(cleanup_temp)
-    if not shutil.which("ffmpeg"):
-        print("WARNING: ffmpeg not found (bundle missing and none on PATH).")
-    threading.Thread(target=watch_loop, daemon=True).start()
+SERVER = None
+SERVER_THREAD = None
+SHUTDOWN_LOCK = threading.Lock()
 
-    # Bind the first free port from PORT upward (survives a stale/second instance).
-    srv = None
-    port = PORT
+
+def start_server():
+    """Bind the local server before the native GUI claims the main thread."""
+    global SERVER, SERVER_THREAD
+    last_error = None
     for p in range(PORT, PORT + 20):
         try:
-            srv = ThreadingHTTPServer((HOST, p), Handler)
-            port = p
+            SERVER = ThreadingHTTPServer((HOST, p), Handler)
+            SERVER.daemon_threads = True
             break
-        except OSError:
+        except OSError as e:
+            last_error = e
             continue
-    if srv is None:
-        print(f"Could not find a free port in {PORT}–{PORT + 19}. "
-              f"Is another copy already running? Try that browser tab.")
-        return
+    if SERVER is None:
+        detail = f" ({last_error})" if last_error else ""
+        raise RuntimeError(f"Could not bind a local port in {PORT}–{PORT + 19}{detail}")
+    SERVER_THREAD = threading.Thread(target=SERVER.serve_forever, name="10bit-http", daemon=True)
+    SERVER_THREAD.start()
+    host, port = SERVER.server_address[:2]
+    return f"http://{host}:{port}/"
 
-    url = f"http://{HOST}:{port}/"
+
+def shutdown():
+    """Idempotent shutdown used by browser Ctrl-C and native window close."""
+    global SERVER
+    with SHUTDOWN_LOCK:
+        if SHUTDOWN_EVENT.is_set():
+            return
+        SHUTDOWN_EVENT.set()
+        WATCH["enabled"] = False
+        JOB.cancel.set()
+        with JOB.lock:
+            proc = JOB.proc
+        if proc and proc.poll() is None:
+            try:
+                proc.kill()
+            except OSError:
+                pass
+        if SERVER:
+            try:
+                SERVER.shutdown()
+                SERVER.server_close()
+            except OSError:
+                pass
+            SERVER = None
+        cleanup_temp()
+        if INSTANCE_GUARD:
+            INSTANCE_GUARD.release()
+
+
+def launch_native(url):
+    """Return True only when a native PyWebView session actually ran."""
+    global NATIVE_WINDOW, NATIVE_WEBVIEW
+    def load_state():
+        initial = load_window_state()
+        with WINDOW_STATE_LOCK:
+            WINDOW_STATE.update(initial)
+        return initial
+
+    def set_handles(window, webview):
+        global NATIVE_WINDOW, NATIVE_WEBVIEW
+        NATIVE_WINDOW, NATIVE_WEBVIEW = window, webview
+
+    return run_native_window(url, load_state, remember_window_size,
+                             remember_window_position, save_window_state,
+                             shutdown, set_handles,
+                             lambda: JOB.running, JOB.cancel.set)
+
+
+def main():
+    global INSTANCE_GUARD
+    bundled_ready = ensure_bundled_ffmpeg()
+    if not bundled_ready and getattr(sys, "frozen", False):
+        show_missing_dependency_error()
+        return
+    ensure_app_support_dir()
+    INSTANCE_GUARD = InstanceGuard(os.path.join(APP_SUPPORT_DIR, "app.lock"))
+    if not INSTANCE_GUARD.acquire():
+        activate_existing(APP_BUNDLE_ID)
+        return
+    atexit.register(INSTANCE_GUARD.release)
+    atexit.register(cleanup_temp)
+    if not bundled_ready:
+        # Developer/browser mode can still use a system FFmpeg. The packaged
+        # app above is deliberately stricter and never relies on it.
+        if not shutil.which("ffmpeg"):
+            print("ERROR: bundled FFmpeg is missing and no system FFmpeg was found.")
+            return
+        print("WARNING: bundled FFmpeg is missing; using the developer machine's FFmpeg.")
+    threading.Thread(target=watch_loop, daemon=True).start()
+    try:
+        url = start_server()
+    except RuntimeError as e:
+        print(e)
+        return
     print(f"8-bit → 10-bit converter running at {url}")
-    print("Leave this window open while you use the app. Close it (or Ctrl-C) to quit.")
+    if "--browser" not in sys.argv and launch_native(url):
+        return
+    open_url(url)
     try:
-        subprocess.Popen(["open", url])
-    except Exception:
-        pass
-    try:
-        srv.serve_forever()
+        while not SHUTDOWN_EVENT.wait(0.5):
+            pass
     except KeyboardInterrupt:
         print("\nShutting down.")
-        srv.shutdown()
+    finally:
+        shutdown()
 
 
 if __name__ == "__main__":

@@ -1,0 +1,5 @@
+# Reproducible Windows x64 packaging environment. Install into a Windows venv.
+# EdgeChromium uses the machine's Microsoft Edge WebView2 Runtime; current
+# Windows 10/11 installs normally include it.
+pywebview[edgechromium]>=5.4,<6
+pyinstaller>=6.8,<7

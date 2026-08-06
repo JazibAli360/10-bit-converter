@@ -1,59 +1,59 @@
 #!/usr/bin/env bash
-#
-# build_release.sh — package the toolkit (code + bundled ffmpeg) into a clean,
-# shareable zip with a first-run note. Run from the repo root:
-#     ./build_release.sh
-# Produces dist/10bit_converter_<version>.zip
-#
+# Build a self-contained Apple Silicon macOS app archive.
+# The output does not require Python, Homebrew, or FFmpeg on the recipient Mac.
 set -euo pipefail
-cd "$(dirname "$0")"
 
-VERSION="$(git describe --tags --always 2>/dev/null || echo dev)"
-NAME="10bit_converter_${VERSION}"
-STAGE="dist/${NAME}"
+ROOT="$(cd "$(dirname "$0")" && pwd)"
+TOOLKIT="$ROOT/toolkit"
+PYTHON="${PYTHON:-$ROOT/.venv-native/bin/python}"
+VERSION="${VERSION:-0.1.0}"
+APP="$TOOLKIT/dist/10-bit Converter.app"
+OUT="$ROOT/dist/10-bit-Converter-${VERSION}-macos-arm64.zip"
 
-rm -rf dist
-mkdir -p "$STAGE"
-
-# Copy the shipping toolkit (code + bundled bin), minus runtime/junk files.
-rsync -a \
-  --exclude '__pycache__' \
-  --exclude '.DS_Store' \
-  --exclude '.10bit_converter_settings.json' \
-  toolkit/ "$STAGE/"
-
-# Bundled ffmpeg check (arm64 / Apple Silicon).
-if [[ -x "$STAGE/bin/arm64/ffmpeg" && -x "$STAGE/bin/arm64/ffprobe" ]]; then
-  echo "✓ bundled ffmpeg included (arm64)"
-else
-  echo "! WARNING: bundled ffmpeg missing at toolkit/bin/arm64 — users would need a system ffmpeg."
+if [[ ! -x "$PYTHON" ]]; then
+  echo "Missing native build environment: $PYTHON"
+  echo "Create it with: python3 -m venv .venv-native && .venv-native/bin/python -m pip install -r toolkit/requirements-native.txt"
+  exit 1
 fi
 
-# Executable bits.
-chmod +x "$STAGE"/*.command "$STAGE"/*.sh 2>/dev/null || true
-[[ -d "$STAGE/bin/arm64" ]] && chmod +x "$STAGE/bin/arm64/"* 2>/dev/null || true
+pushd "$TOOLKIT" >/dev/null
+"$PYTHON" setup_native.py py2app --arch arm64
+codesign --verify --deep --strict "$APP"
 
-# First-run note at the top level.
-cat > "$STAGE/START HERE.txt" <<'TXT'
-8-bit -> 10-bit Converter
-=========================
+for required in \
+  "$APP/Contents/Frameworks/Python3.framework/Versions/3.9/Python3" \
+  "$APP/Contents/Resources/bin/arm64/ffmpeg" \
+  "$APP/Contents/Resources/bin/arm64/ffprobe" \
+  "$APP/Contents/Resources/index.html" \
+  "$APP/Contents/Resources/JZB.png" \
+  "$APP/Contents/Resources/bin/arm64/libplacebo.bundle.zip"; do
+  [[ -e "$required" ]] || { echo "Packaging failed: missing $required"; exit 1; }
+done
 
-1. Double-click  Start_Here.command
-2. FIRST TIME ONLY: if nothing happens, right-click Start_Here.command -> Open -> Open.
-   (macOS blocks unsigned scripts once; after that, double-click works normally.)
-3. Your browser opens the app at http://127.0.0.1:8766
-   Leave the Terminal window open while you use it; close it to quit.
+# Presence is not enough: a tiny dynamically linked FFmpeg can look bundled
+# while its required dylibs are absent. Exercise both standard tools from the
+# final app bundle before producing a release.
+"$APP/Contents/Resources/bin/arm64/ffmpeg" -hide_banner -version >/dev/null
+"$APP/Contents/Resources/bin/arm64/ffprobe" -hide_banner -version >/dev/null
+if [[ "${REQUIRE_LIBPLACEBO:-0}" == "1" ]]; then
+  "$PYTHON" "$TOOLKIT/qa/release_smoke_test.py" --require-gpu "$APP"
+else
+  "$PYTHON" "$TOOLKIT/qa/release_smoke_test.py" "$APP"
+fi
 
-Requirements: Apple Silicon Mac (bundled ffmpeg is arm64) + Python 3
-(preinstalled on macOS; the launcher offers to install it if missing).
 
-What it does: debands 8-bit AI video, adds dither, and re-encodes to true 10-bit.
-No AI — it never reinterprets your detail or texture. See README.md for details.
+if [[ "${REQUIRE_LIBPLACEBO:-0}" == "1" ]]; then
+  BUNDLE="$APP/Contents/Resources/bin/arm64/libplacebo.bundle.zip"
+  unzip -l "$BUNDLE" | grep -q 'libplacebo/ffmpeg' || {
+    echo "Release gate failed: optional bundle has no libplacebo FFmpeg"; exit 1;
+  }
+  unzip -l "$BUNDLE" | grep -q 'libplacebo/lib/libMoltenVK.dylib' || {
+    echo "Release gate failed: optional bundle has no MoltenVK runtime"; exit 1;
+  }
+fi
+popd >/dev/null
 
-Built by Jazib Ali 360.
-TXT
-
-# Zip it (unix perms preserved).
-( cd dist && zip -qr "${NAME}.zip" "${NAME}" )
-echo "Built dist/${NAME}.zip"
-du -h "dist/${NAME}.zip" | awk '{print "size:", $1}'
+mkdir -p "$ROOT/dist"
+rm -f "$OUT"
+ditto -c -k --sequesterRsrc --keepParent "$APP" "$OUT"
+echo "Built standalone app archive: $OUT"

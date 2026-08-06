@@ -1,308 +1,258 @@
 # Redesign & Native-App Plan
 
-Everything left to do to (1) implement the approved UI redesign in the real app
-and (2) turn it into a native macOS app. Written to be picked up cold, in a
-future session, without needing this conversation's context.
+This is the current implementation plan for turning the completed browser
+interface into a distributable, Apple-Silicon-native macOS app. It is written
+to be safe to resume in a future session.
 
-## Where things stand right now
-- **Mockup is approved.** Lives at `design/approved_mockup_v1.html` (open it
-  directly in a browser — no server needed, it's fully static/self-contained).
-  It shows 4 states: empty/first-launch, idle-queued, converting, just-finished.
-- **The real app is NOT yet updated.** `toolkit/index.html` (925 lines) and
-  `toolkit/server.py` (1203 lines) still have the *old* cluttered toolbar.
-  Nothing described in Phase A below has been built into the real app yet —
-  only mocked up.
-- **The icon is decided.** `Imagine Art - Icon.png` (534×534 PNG) sits at the
-  project root. It's already embedded in the mockup as a 64×64 base64 PNG in
-  the title bar. Not yet wired into the real app.
-- Every feature in `ROADMAP.md` (v1–v29) is shipped and working. This document
-  is the *next* arc of work, layered on top of that.
+## Product direction
 
-## Guiding principles (unchanged from ROADMAP.md)
-- No AI, no reinterpretation of detail/texture. Quality over speed — no
-  hardware/fast-encode mode. Local, private, zero-install. Apple Silicon
-  (arm64) only. Built by **Jazib Ali 360**.
-- Progressive disclosure: show the ~5 things everyone uses; everything else
-  lives behind hierarchy (menus, expanders, per-row hover actions).
-- Reuse, don't rewrite — the native app (Phase B+) wraps the *existing*
-  `server.py` + `index.html`; no second codebase, no framework rewrite.
-- **No "no AI" messaging in the UI itself** (user's call — keep that framing
-  out of the product surface; it can still live in README/code comments).
+- Preserve the existing conversion engine and web UI: the native app wraps
+  `toolkit/server.py` and `toolkit/index.html`; no second UI codebase and no
+  SwiftUI rewrite.
+- Keep the product local, private, Apple Silicon-only, and quality-first.
+  There is no AI, cloud processing, or hardware/fast-encode mode.
+- Ship a real `.app`: users should not need a browser, Terminal, Python,
+  Homebrew, or `pip`.
+- Built by **Jazib Ali 360**.
 
----
+## Where things stand
 
-## Phase A — Implement the approved redesign in the real app
+- The approved mockup is `design/approved_mockup_v1.html`.
+- **The web redesign is complete and verified in the real app.** It includes
+  the collapsed toolbar, contextual queue actions, presets-first Adjust
+  disclosure, hero queue, SVG icon language, teaching empty state, quick-look
+  preview, named progress phases, batch-completion banner, embedded favicon,
+  and light/dark-mode verification with real conversions.
+- The corresponding commits are `fb60510` through `d4b45ba`.
+- The next work is the frozen native-app vertical slice described in Phase 0.
+- `Imagine Art - Icon.png` is the chosen source art. It is already embedded
+  in the web app. Obtain a 1024x1024 master before creating the release
+  `.icns`; the existing 534x534 image is adequate for the web favicon but not
+  ideal as the highest-resolution macOS icon source.
 
-This is the immediate next phase. Work only in `toolkit/index.html` (CSS +
-markup + JS) and `toolkit/server.py` only if a genuinely new capability is
-needed (mostly it isn't — this is a frontend restyle of existing features).
+## Completed redesign record (Phase A)
 
-### A1. Collapse the toolbar
-**Current state (index.html ~line 108-121):** two toolbar rows. Row 1 has 7
-buttons: Add files, Add folder, Remove, Clear, Preview scopes, Check banding,
-Watch folder, Last report, Settings — all styled identically, all always
-visible. Row 2 is the Presets row.
-**Target (per mockup):** Row 1 becomes: a split-button **Add** (primary click
-= add files; small chevron = dropdown with "Add files…" / "Add folder…"), a
-spacer, an icon-only **⚙ Settings** button, and an icon-only **⋯ More** button
-opening a small dropdown menu with: Watch folder…, Last report…, What this
-does… (Help).
-- Remove/Clear come OUT of the global toolbar (see A2 — they move to
-  contextual, selection-driven controls).
-- Preview scopes / Check banding come OUT of the global toolbar (see A2 — they
-  become per-row hover actions).
-- Reuse existing JS functions as-is: `pick()`, `openSettings()`,
-  `toggleWatchPanel()`, `openReport()`, the Help modal trigger. Only the
-  *markup/wiring* changes, not the underlying logic.
-- New: a tiny dropdown-menu component (see mockup `.menu-wrap`/`.menu` CSS —
-  copy directly, it's self-contained) for the Add split-button chevron and the
-  ⋯ More button.
+Phase A is intentionally archived here rather than left as future work.
 
-### A2. Contextual queue actions
-**Current state:** Compare/Reveal/why? buttons *already exist* per-row (lines
-432-433) shown conditionally on status — this part is already right,
-structurally. What's missing: Scopes and Check-banding are still
-toolbar-global, operating on "selected or first queued file" (see
-`openScopes()`/`checkBanding()` — they do
-`const target = sel.length? queue[sel[0]] : queue[0]`).
-**Target:** Add "Preview scopes" and "Check banding" as additional per-row
-hover-action buttons (icon-only, matching Compare/Reveal styling) on **every**
-row regardless of status (not just Done) — since you can preview/check-band a
-file before converting it. Update `openScopes(i)`/`checkBanding(i)` to take an
-explicit row index instead of relying on checkbox selection; keep the
-checkbox-selection fallback only for bulk actions (Remove-selected).
-- Remove appears only when ≥1 row is checked (a small contextual bar or just
-  enable/disable the existing Remove concept — simplest: keep a single
-  "Remove" that appears above the queue only when something's checked,
-  matching the mockup's restraint).
-- Clear (whole queue) can live in the ⋯ More menu instead of the toolbar,
-  since it's rare and destructive-ish.
+- A1: collapsed Add split button, Settings, and More menu.
+- A2: contextual selection controls; per-row Scopes and Band actions.
+- A3–A7: presets-first disclosure, larger queue, contextual conversion
+  controls, unified tokens/icons, and tabular numeric display.
+- A8–A12: teaching empty state, debounced quick-look preview, named phases,
+  batch summary, and embedded icon.
+- A13: verified through a live browser conversion, including quick-look and
+  completion summary, in light and dark appearance.
 
-### A3. Presets-first, granular controls hidden by default
-**Current state:** Format / Deband / Bitrate are three always-visible
-segmented-button rows (below Presets).
-**Target:** Wrap them in a `<details class="adjust">` disclosure (see mockup
-CSS `.adjust`/`.adjust-body`/`.field-row` — copy directly), closed by default,
-with a one-line summary showing the current picks (e.g. "— HEVC · Medium
-deband · Match source"). Clicking it expands to the exact same segmented
-controls that exist today — no logic change, just wrapped in `<details>` and
-initially collapsed. The summary line must update live as the user changes
-Format/Deband/Bitrate (hook into the existing `segInit()` callbacks).
-
-### A4. Queue as hero
-Widen the app's max-width (or go fluid) so the queue table gets more room;
-increase its min-height so it doesn't feel like an afterthought under four
-rows of controls.
-
-### A5. One icon language
-Replace ALL emoji in `index.html` with the inline-SVG line icons from the
-mockup (`.icon-btn svg`, row action icons — copy the exact `<svg>` markup used
-for Add/Settings/More/Scopes/Banding/Compare/Reveal/Remove from
-`design/approved_mockup_v1.html`). Emoji locations to replace: line 107 (🎬 in
-`<h1>`), 117-121 (📊🔍👁📋⚙), line 645 (👁 in `toggleWatchPanel` JS string).
-Also check `checkBanding()`'s banner and any other stray emoji (🔍 in the
-banner text, etc.) — grep the file for emoji before considering this done.
-
-### A6. Contextual action bar
-**Current state:** Convert + "Stop after current" + Cancel are all always
-rendered, disabled/enabled via `setControls()`.
-**Target (visual only):** Keep the same three buttons/logic, but restyle so
-only Convert is prominent when idle; Stop-after/Cancel visually take Convert's
-place while running (per mockup State 2). This might just be a CSS/opacity
-change rather than DOM add/remove, to keep `setControls()` simple.
-
-### A7. Visual system pass
-Adopt the mockup's token system directly — it's a drop-in improvement over the
-current ad hoc colors:
-- Copy the entire `:root` CSS variable block from the mockup (colors, font
-  stacks) into `index.html`'s existing `<style>`, replacing the current
-  `--bg/--card/--ink/...` tokens. Re-point every existing CSS rule at the new
-  token names (mostly 1:1 renames — check the mockup's names against
-  `index.html`'s current ones and reconcile, since they diverged slightly
-  during the mockup's own evolution).
-- Copy `.pill`, `.chip`, `.qrow`, `.seg`, `.btn*` styles from the mockup where
-  they're strictly better (rounded pill presets, tighter chip badges, tabular
-  mono numerics via `--mono`).
-
-### A8. Teaching empty state
-**New.** When `queue.length === 0`, render the mockup's `.teach` block instead
-of (or in addition to) the current plain-text empty message: the 8-bit→10-bit
-gradient swatch illustration + "Drag a clip here, or click Add" + the one-line
-description + the trust line ("100% local — nothing ever leaves your Mac").
-Copy `.teach`/`.teach-illust`/`.swatch` CSS directly from the mockup (the
-banded/smooth gradients are pure CSS `repeating-linear-gradient`/
-`linear-gradient`, no images needed).
-
-### A9. Quick-look hover preview
-**New — needs both frontend and a small backend piece.** On hover over a
-**Done** row's filename, show a small popover with two thumbnails (before/
-after, same frame) — like the mockup's `.quicklook`.
-- Backend: reuse the existing `render_compare()` machinery (already produces
-  before/after frame PNGs — see `/api/compare` and `/api/compare-image` in
-  `server.py`, used today by the Compare modal). On hover, call `/api/compare`
-  with a default timestamp (or cache the result from the last Compare open, if
-  any, to avoid re-rendering on every hover) and show the two images in a
-  small floating panel instead of opening the full modal.
-- Debounce: don't fire the ffmpeg render on every mouse-in — wait ~300ms after
-  hover starts, and cancel if the mouse leaves first (mirrors how
-  `checkBanding`/scopes already avoid redundant calls).
-- Frontend: CSS is in the mockup (`.quicklook`, `.thumb`, `.pane`) — needs real
-  `<img>` src wiring instead of the mockup's placeholder gradient divs.
-
-### A10. Named phases, not just percentages
-**New — frontend only, data already exists.** The `/api/status` response
-already distinguishes phases server-side (e.g. "pass 1/2 (analyzing)" vs the
-main encode — see `run_batch()`'s `JOB.now["file"]` strings in `server.py`,
-and the dual-export "— HEVC preview" suffix). Currently the frontend just
-displays that whole string as-is in the Now-running panel and doesn't surface
-a phase on the row itself.
-- Parse a short phase label out of `JOB.now`/row state client-side (e.g.
-  "Encoding", "Analyzing", "Rendering preview") and render it as the mockup's
-  `.phase-pill` next to the filename in both the running queue row and the
-  Now-running panel.
-- If the existing status strings aren't clean enough to parse reliably,
-  consider adding an explicit `"phase"` key to the `JOB.now` dict server-side
-  instead of overloading the free-text `"file"` string — this is the more
-  robust fix if A10 gets fiddly.
-
-### A11. Inline dismissible batch-summary banner
-**New — frontend only, data already exists.** `/api/report` (built in v25)
-already returns everything needed: done/skipped/failed counts, total in/out
-size, elapsed time. Today it's only shown when the user clicks "Last report".
-- When a batch's `/api/status` transitions from `running:true` to
-  `running:false`, fetch `/api/report` and render the mockup's
-  `.batch-summary` banner (green, checkmark icon, "N done · X MB → Y MB · Zs",
-  a "View report" link that opens the existing report modal, and a dismiss ✕).
-  Auto-fade/dismiss is optional — the mockup has a manual ✕ only, keep it
-  simple.
-- Don't show it for a batch of 0 real conversions (e.g. all skipped) unless
-  that's still useful signal — use judgement here, or just always show it
-  when a batch completes.
-
-### A12. Real app icon
-- Add `<link rel="icon">`/favicon using the same 64×64 base64 PNG approach
-  proven in the mockup (extract the exact data URI from
-  `design/approved_mockup_v1.html`'s `.app-icon` `<img src="data:image/png..."`
-  — don't regenerate, reuse the same bytes for consistency).
-  `sips -z 64 64 "Imagine Art - Icon.png" --out toolkit/icon64.png` is the
-  regeneration command if needed; then base64-encode.
-- This is also the source asset for the later `.icns` app-bundle icon
-  (Phase D2) — keep the original 534×534 PNG as the master, don't work from
-  the downscaled copy for that.
-
-### A13. Verification (don't skip)
-Once A1–A12 land, re-run the same verification discipline used throughout this
-project: start `server.py`, drive the real page via the claude-in-chrome
-browser tools (not just visual screenshots — click through Add/Settings/More,
-trigger a real conversion, confirm the quick-look preview actually renders a
-real frame, confirm the batch-summary banner appears after a genuine batch
-completes, check light AND dark mode). Do not consider Phase A done on
-mockup-fidelity alone — the mockup was static HTML; the real app has real
-state and real async timing that can break things the mockup couldn't reveal.
-
-**Effort:** ~1–2 focused sessions (A9/A10/A11 are the only pieces with new
-logic; A1–A8/A12 are mostly copy-the-mockup's-CSS-and-rewire-existing-JS).
-**Risk:** low — every underlying capability already exists and works; this is
-almost entirely presentational.
+The browser app remains a supported development/fallback mode. Do not redo
+this phase unless a specific regression is found.
 
 ---
 
-## Phase 0 — De-risk spike for going native (do FIRST, ~30 min, before Phase B)
-- [ ] `pip install --user pywebview`; a 20-line throwaway script that opens a
-  native window pointing at a local page. Confirm it launches, renders HTML,
-  and closes cleanly on this Mac's system Python 3.9 (pulls in pyobjc).
-- [ ] Confirm WKWebView (Safari engine, not Chrome) renders the *redesigned*
-  `index.html` correctly — segmented buttons, modals, drag-drop, sliders,
-  the new quick-look popover, the `<details>` disclosure. It was only ever
-  tested in Chrome via claude-in-chrome.
-- **Gate:** if PyWebView won't cooperate on system Python, the fallback is
-  installing a python.org Python inside the `.app` bundle (Phase D handles
-  bundling Python anyway) — but confirm this before planning further around it.
+## Phase 0 — Frozen vertical-slice spike (first)
 
-## Phase B — PyWebView native shell
-- [ ] **B1.** Add `pywebview` to `Start_Here.command`'s install step, with a
-  graceful fallback to opening a browser tab if it's missing.
-- [ ] **B2.** `server.py` already binds the first free port (see `main()`).
-  Instead of always `subprocess.Popen(["open", url])`, when pywebview is
-  importable do `webview.create_window("8-bit → 10-bit Converter", url, ...)`
-  then `webview.start()`; keep `open()` as the fallback path.
-- [ ] **B3.** Closing the native window must cleanly shut the server down
-  (hook into pywebview's window-closed event → call the same shutdown path
-  `atexit`/`cleanup_temp()` already uses).
-- [ ] **B4.** Window config: title (use the same title as A12/the mockup —
-  "8-bit → 10-bit Converter by Jazib Ali 360"), sensible min size.
-- [ ] **B5.** Keep the existing osascript file/folder pickers for now — note
-  `webview.create_file_dialog` as a future native-integration swap, not
-  required for B to ship.
-- **DoD:** double-clicking `Start_Here.command` opens a native titled window
-  (no browser tab, no "keep this Terminal open" messaging needed); every
-  feature works in WKWebView; a real conversion completes end-to-end.
-- **Effort:** ~half a session after the Phase 0 spike passes.
-- **Risk:** medium — WKWebView vs Chrome rendering gaps, mitigated by Phase
-  0's check and by the fact that Phase A's CSS avoids anything exotic.
+**Goal:** prove the risky part: a packaged app, not merely a PyWebView window.
 
-## Phase C — Native polish
-- [ ] **C1. Menu bar.** File (Add…, Quit) / Edit / Help via pywebview's menu
-  API.
-- [ ] **C2. Persistence.** Remember window size + last-used Format/Deband/
-  Bitrate picks + last-used add-file folder (this subsumes the "persist
-  last-used picks" item from ROADMAP.md's still-open list — store in the same
-  settings JSON `server.py` already reads/writes).
-- [ ] **C3. First-run card.** A one-time dismissible "what this does" card
-  (can literally reuse the existing Help modal content, just auto-shown once).
-- *(Keyboard shortcuts — explicitly not wanted, per prior decision. Don't
-  add them.)*
-- **Effort:** ~1 session. **Risk:** low.
+1. Create an arm64 virtual environment with pinned Python, PyWebView/PyObjC,
+   and packaging-tool versions. Do not depend on macOS's system Python or use
+   `pip install --user`.
+2. Start with **py2app**, which PyWebView documents for macOS. Keep
+   PyInstaller as a measured fallback if the actual spike proves py2app
+   unsuitable; do not choose based on guesswork.
+3. Build a minimal arm64 `.app` that bundles and successfully uses:
+   `server.py`, `index.html`, the icon, `ffmpeg`, and `ffprobe`.
+4. In the frozen build, start the existing HTTP server on a background thread,
+   then run `webview.start()` on the main thread. Verify a normal titled
+   WKWebView window opens.
+5. Verify a bundled-FFmpeg probe/conversion, a preference write outside the
+   app bundle, a clean close, and no remaining listener/process after quit.
+6. Test the frozen build in a clean macOS account without Homebrew or a
+   developer Python.
 
-## Phase D — Packaging & distribution
-- [ ] **D1.** Build a real `.app`. Bundle Python + pywebview + `server.py` +
-  `index.html` + `toolkit/bin/arm64` (the ffmpeg/ffprobe binaries) into
-  `10-bit Converter.app`. Spike PyInstaller vs py2app first — PyInstaller
-  tends to be more reliable with the system Python; py2app is more
-  "Mac-proper." Pick one based on that spike, don't guess upfront.
-- [ ] **D2. App icon (`.icns`).** Generate from the master
-  `Imagine Art - Icon.png` (534×534) using `iconutil`/`sips` to build the full
-  macOS icon size set, then `iconutil -c icns`.
-- [ ] **D3. Gatekeeper.** Self de-quarantine on first run where possible
-  (same `xattr -dr com.apple.quarantine` pattern already used for the bundled
-  ffmpeg binaries in `ensure_bundled_ffmpeg()`); document the one-time
-  right-click → Open. Frictionless (no right-click at all) needs an Apple
-  Developer account ($99/yr) for signing + notarization — optional, not
-  something to build around now.
-- [ ] **D4. Release build.** Extend `build_release.sh` to emit the `.app`
-  (optionally a `.dmg`) instead of / alongside the current zip.
-- [ ] **D5. Docs.** Update `toolkit/README.md` for the app-launch flow instead
-  of the "open your browser" instructions.
-- **DoD:** a clean macOS account, double-clicking the app (after the one-time
-  Gatekeeper step) launches straight into the converter; ffmpeg resolves from
-  inside the bundle; no Python/pip visible to the user at all.
-- **Effort:** ~1–2 sessions — packaging is the fiddliest part of this whole
-  arc. **Risk:** medium-high, bundling the system Python is the classic pain
-  point; Phase 0 + D1's own spike de-risk it in advance. Expect bundle size
-  ~150–250 MB (Python + ffmpeg) — acceptable and already the norm for this
-  category of tool.
+**Gate:** continue only once the frozen app launches, renders correctly in
+WKWebView, runs its bundled binaries, persists test data, and exits cleanly.
+This phase is expected to surface packaging problems early, while the app is
+still small.
 
 ---
 
-## Small leftover items (not phase-specific, cheap, do whenever convenient)
-- **Output filename preview** before converting — show the computed
-  `NAME_10bit.ext` path inline near each queued row or in the Adjust summary,
-  using the same `make_output_path()` logic `server.py` already has (would
-  need a lightweight endpoint or client-side mirror of the naming rule:
-  `{base}{suffix}.{mov|mp4}`).
-- **Version number shown in the app** — a small `vN` string in the footer or
-  Help modal, bumped alongside each `git tag`.
+## Phase 1 — Native-readiness refactor
 
-## Out of scope (still, unchanged)
-- AI anything (debanding, deflicker, upscaling). Sharpening/upscaling/editing.
-  Cloud/upload. Intel (x86_64) bundle. Electron (too heavy). A from-scratch
-  SwiftUI rewrite (throws away the shared web codebase). Keyboard shortcuts.
+Do this before treating PyWebView as a production shell.
 
-## Suggested order when picking this back up
-1. **Phase A** end-to-end (implement + verify in-browser) — this alone is a
-   complete, shippable improvement even if native packaging never happens.
-2. **Phase 0 spike** — quick, tells you whether B–D are even worth planning
-   around further.
-3. **Phase B** — native shell, biggest "feels real" jump for the least work.
-4. **Phase C**, then **Phase D** — polish, then package for handing to people.
-5. Small leftover items whenever there's a spare 20 minutes.
+### 1.1 Application data and resource paths
+
+- Keep immutable app resources inside the bundle.
+- Move all writable state out of `HERE` and into
+  `~/Library/Application Support/Jazib Ali 360/10-bit Converter/`:
+  settings, custom presets, conversion log, window state, and first-run state.
+- Put disposable preview/cache data in a per-run cache under the system temp
+  directory. Delete it on clean exit and prune stale data on launch.
+- Use an atomic write/replace for JSON preferences so a forced quit cannot
+  leave malformed settings.
+
+### 1.2 Server lifecycle and conversion ownership
+
+- Refactor startup into an explicit application controller:
+  bind the loopback server, run `serve_forever()` in a worker thread, create
+  the native window, and run the GUI loop on the main thread.
+- Implement one idempotent `shutdown()` path: stop new requests, stop the
+  watcher, cancel/terminate owned FFmpeg processes when requested, close the
+  server, join short-lived threads, then remove temporary files.
+- On close during a conversion, ask whether to keep working or cancel and
+  quit. Never silently remove a partial output or temporary source while an
+  FFmpeg child still owns it.
+- Define single-instance behaviour: a second launch should foreground the
+  existing app rather than start a competing server/watch process.
+
+### 1.3 Local API and UI hardening
+
+The loopback server remains an API and must not trust every local request.
+
+- Generate a cryptographically random, per-launch API token. Require it on
+  every API request, including image/preview endpoints.
+- Reject unexpected `Host` and `Origin` values; apply request-size limits and
+  return safe errors.
+- Restrict file operations to paths selected/queued by the app. Do not allow
+  arbitrary local paths in Convert, Reveal, Compare, Scopes, or Settings APIs.
+- Escape every filename, path, error, preset name, and report value before it
+  reaches `innerHTML`; prefer DOM nodes and `textContent` for user-controlled
+  values.
+- Add conservative security headers and disable caching for API responses.
+
+### 1.4 Native file acquisition
+
+- Use PyWebView's native file/folder dialog for the packaged app. Retain the
+  `osascript` picker only for the browser fallback.
+- For native drag-and-drop, queue original file paths through PyWebView's
+  dropped-file support. Do **not** upload/copy entire video files into the
+  temporary intake directory; large source clips make that unacceptable.
+
+### 1.5 Accessibility and native fit
+
+- Keep normal macOS window chrome; avoid a frameless imitation title bar.
+  Make the in-page header compact enough that it does not duplicate the native
+  title bar.
+- Give every icon control an accessible label, a visible focus style, and
+  keyboard-operable menu/modal behaviour. Show row actions on focus-within as
+  well as hover.
+- Check contrast, reduced motion, VoiceOver labels/focus order, and light/dark
+  mode. These are accessibility requirements, not custom conversion shortcuts.
+- Standard macOS commands such as Quit and Preferences may remain in the menu
+  bar; product-specific keyboard shortcuts stay out of scope.
+
+**Definition of done:** the browser fallback still works; the native-safe
+backend has app-data paths, bounded temp storage, a secure loopback API,
+safe text rendering, path-based native drag-and-drop, and a deterministic
+shutdown path.
+
+---
+
+## Phase 2 — PyWebView native shell
+
+1. Add a normal titled window named `8-bit → 10-bit Converter by Jazib Ali 360`
+   with a sensible minimum size and native app icon.
+2. Use the Phase 1 application controller to run the server and GUI loop.
+3. Wire native file/folder dialogs, drag-and-drop paths, Reveal in Finder, and
+   conversion start/stop into the existing UI.
+4. Add native menus: application/About, File (Add files, Add folder, Quit),
+   Edit, and Help. Ensure they call the same product actions as the UI.
+5. Persist window size/position, last-used Format/Deband/Bitrate, last picker
+   directory, and one-time onboarding state in Application Support.
+6. Show a one-time dismissible first-run card using the existing Help content.
+
+**Definition of done:** opening the app shows a native window with no browser
+or Terminal; native dialogs and drag/drop work; a genuine conversion,
+comparison, scopes render, watch folder, report, cancel, and graceful stop all
+work in WKWebView.
+
+---
+
+## Phase 3 — Packaging and release
+
+### 3.1 Bundle construction
+
+- Build an arm64-only `.app` with Python, PyWebView/PyObjC, web resources, and
+  the arm64 FFmpeg/FFprobe binaries.
+- Use a dedicated bundle-resource resolver; never rely on the launch working
+  directory.
+- Centralize the version so it feeds the app UI, `CFBundleShortVersionString`,
+  `CFBundleVersion`, release archive name, and git tag.
+- Generate and verify a full `.icns` from the 1024x1024 master image.
+
+### 3.2 Gatekeeper and signing tiers
+
+- Development/unsigned builds: document the one-time right-click → Open path.
+- Do not promise that the app can self-remove quarantine before Gatekeeper has
+  allowed it to launch.
+- Public releases: sign every nested executable with a Developer ID identity,
+  enable hardened runtime, notarize with `notarytool`, staple the ticket, and
+  verify the finished artifact. This is the route to frictionless launch.
+
+### 3.3 FFmpeg attribution and license compliance
+
+- The bundled FFmpeg build enables GPL components. Before any public release,
+  add a Third-Party Notices screen/file, preserve the exact build configuration,
+  and provide the corresponding FFmpeg and dependency source/notice material.
+- Review distribution obligations and codec-patent exposure before selling or
+  broadly distributing the app.
+
+### 3.4 Release automation and docs
+
+- Extend `build_release.sh` (or replace it with a dedicated release script) to
+  build, sign when credentials are present, package as ZIP/DMG, and emit
+  checksums.
+- Update `toolkit/README.md` for app launch, Gatekeeper tier, privacy, bundled
+  dependencies, troubleshooting, and browser fallback.
+
+**Definition of done:** an arm64 clean macOS account can open the packaged app,
+complete a conversion using bundled FFmpeg, retain settings across relaunch,
+and do so without Python, pip, a browser, or Terminal.
+
+---
+
+## Phase 4 — Release-quality verification
+
+Run the following on the packaged artifact, not only from the repository:
+
+- Clean user account; no Homebrew/developer Python.
+- Light and dark appearance; small and large window sizes; VoiceOver/focus
+  navigation; reduced-motion setting.
+- File/folder dialog, native drag-and-drop, external drive, Unicode/long file
+  names, permissions failure, nonexistent/moved source, and multiple videos.
+- A very large file: verify native drag/drop does not make a full temporary
+  copy.
+- Low free space, conversion failure, cancel, Stop after current, app close
+  during conversion, watch-folder activity, sleep/wake, and a second launch.
+- HEVC, ProRes, scopes, banding meter, compare, quick-look, custom presets,
+  output collision handling, report, and Finder reveal.
+- Verify the final app signature/notarization status when using the signed
+  release tier.
+
+---
+
+## Small follow-ups
+
+- Output filename preview before conversion, derived from the server's output
+  path logic rather than duplicated fragile client-side rules.
+- App version in Help/footer, driven by the centralized release version.
+- Consider bounded/evictable quick-look caching so repeated hover previews do
+  not accumulate FFmpeg-rendered frame directories during a long session.
+- Keep **Faithful 10-bit** on the current FFmpeg deband+dither pipeline. An
+  optional deterministic libplacebo backend is specified, gated, and scoped in
+  `toolkit/IMPLEMENTATION_ROADMAP.md`; do not begin it until its M3 build spike
+  passes.
+
+## Out of scope
+
+- AI processing, cloud/upload, sharpening/upscaling/editing, Intel support,
+  Electron, and a from-scratch SwiftUI rewrite.
+- Custom conversion keyboard shortcuts.
+
+## Reference decisions
+
+- PyWebView uses WKWebView on macOS and requires its GUI loop on the main
+  thread. Its documentation recommends py2app for macOS freezing and advises
+  CSRF protection when an external local server is used.
+- Apple notarization requires Developer ID signing and hardened runtime.
+- FFmpeg's own licensing guidance applies because the distributed binary has
+  GPL components enabled.

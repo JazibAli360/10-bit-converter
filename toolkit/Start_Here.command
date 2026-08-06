@@ -5,7 +5,7 @@
 # Double-click this file. It will:
 #   1. Check for what the app needs (bundled ffmpeg + Python 3 — no GUI toolkit).
 #   2. Offer to install anything that's missing — you just confirm.
-#   3. Start the local converter app and open it in your web browser.
+#   3. Start the native converter window when available (browser fallback).
 #
 # FIRST RUN: macOS blocks unsigned scripts by default. If double-click does
 # nothing, right-click this file -> Open -> Open. You only do this once.
@@ -82,11 +82,11 @@ if [[ -z "$PYBIN" ]]; then
   fi
 fi
 
-# --- 5. Launch the web app (opens in your browser) ---
+# --- 5. Launch the app (native PyWebView window when installed; browser fallback) ---
 say
 if [[ -n "$PYBIN" ]]; then
-  ok "All set. Opening the converter in your browser…"
-  say "${DIM}Keep this Terminal window open while you use the app. Close it to quit.${RESET}"
+  ok "All set. Opening the converter…"
+  say "${DIM}A native window opens when PyWebView is installed; otherwise the browser fallback opens.${RESET}"
   exec "$PYBIN" "./server.py"
 else
   err "Python 3 isn't available, so the app can't start."

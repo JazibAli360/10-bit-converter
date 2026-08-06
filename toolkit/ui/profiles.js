@@ -1,0 +1,11 @@
+/* Top-level profile choices and the Advanced disclosure. */
+const PRESETS = {
+  delivery:{label:"Delivery",mode:"HEVC (smaller, delivery)",strength:"Medium",rate:"Match source",settings:{max_quality:false,audio:"copy",engine:"ffmpeg-deband-v1"}},
+  compatibility:{label:"H.264 10-bit (limited support)",mode:"H.264 (10-bit, delivery)",strength:"Medium",rate:"Match source",settings:{max_quality:false,audio:"copy"}},
+  grading:{label:"Grading",mode:"ProRes 4444 (grading, huge file)",strength:"High",rate:"Quality (CRF)",settings:{max_quality:true,audio:"copy",engine:"ffmpeg-deband-v1"}},
+  preserve:{label:"Gentle processing",mode:"HEVC (smaller, delivery)",strength:"Medium",rate:"Match source",settings:{max_quality:true,audio:"copy",engine:"ffmpeg-deband-v1"}},
+};
+function syncAdvancedVisibility(){ const panel=document.getElementById("advancedPanel"), fields=document.getElementById("advancedSettingsFields"); panel.style.display=advancedMode?"block":"none"; if(advancedMode) panel.open=true; if(fields) fields.style.display=advancedMode?"contents":"none"; }
+async function applyTopProfile(key){ activeTopProfile=key; ["faithful","editing","advanced"].forEach(k=>document.getElementById("profile-"+k)?.classList.toggle("active",k===key)); advancedMode=key==="advanced"; syncAdvancedVisibility(); if(key==="faithful") await applyPreset("delivery"); if(key==="editing") await applyPreset("grading"); renderQueue(queue); refreshConvert(); }
+async function applyPreset(name){ const preset=PRESETS[name]; if(!preset) return; setSeg("segMode",preset.mode); setSeg("segStr",preset.strength); setSeg("segRate",preset.rate); const current=await j("/api/settings"); SETTINGS={...current,...preset.settings}; await j("/api/settings",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(SETTINGS)}); updateExportTarget(); updateCustomRate(); updateEstimate(); setActivePreset(name); setStatus(`Preset applied: ${preset.label}.`); }
+function setActivePreset(key){ ["delivery","compatibility","grading","preserve"].forEach(k=>{ const button=document.getElementById("presetBtn-"+k); if(button) button.classList.toggle("active",k===key); }); document.querySelectorAll("#customPresets [data-preset]").forEach(button=>button.classList.toggle("active",button.dataset.preset===key)); }

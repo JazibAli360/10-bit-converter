@@ -1,0 +1,4 @@
+# Reproducible development/build environment for the native macOS app.
+# Install into an arm64 virtual environment, never with --user.
+pywebview>=5.4,<6
+py2app>=0.28,<1

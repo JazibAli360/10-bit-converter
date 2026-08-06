@@ -7,21 +7,21 @@
 <link id="favicon" rel="icon" type="image/png">
 <style>
   :root{
-    --bg:#f4f5f7; --card:#ffffff; --ink:#1a1d21; --muted:#6b7280; --line:#e4e6eb;
-    --accent:#2d7dd2; --accent-dk:#1b5fa5; --danger:#d9534f; --danger-dk:#b52b27;
+    --bg:#f6f5fb; --card:#ffffff; --ink:#171a2c; --muted:#6c7086; --line:#e7e4f0;
+    --accent:#5d3bd1; --accent-dk:#43229f; --danger:#d9534f; --danger-dk:#b52b27;
     --ok:#1a7f37; --run:#1f6feb; --warn:#8a6d3b; --chip:#eef1f5;
-    --accent-dim:#e3ebfd; --accent-text:#2452b8; --border-strong:#cdd2da;
+    --accent-dim:#eee8ff; --accent-text:#4c2ab5; --border-strong:#d5caef;
     --mono: ui-monospace, "SF Mono", Menlo, monospace;
   }
   @media (prefers-color-scheme: dark){
-    :root{ --bg:#15171b; --card:#1e2127; --ink:#e8eaed; --muted:#9aa0a8; --line:#2c313a;
-      --accent:#4c9aff; --accent-dk:#2d7dd2; --chip:#262b33; --ok:#3fb950; --run:#4c9aff;
-      --accent-dim:#274a85; --accent-text:#bcd3ff; --border-strong:#39424f; }
+    :root{ --bg:#14111f; --card:#201b31; --ink:#f0edfb; --muted:#aaa3bf; --line:#332a4a;
+      --accent:#a78bfa; --accent-dk:#7c5ce0; --chip:#2a233c; --ok:#65d49a; --run:#a78bfa;
+      --accent-dim:#3d2b70; --accent-text:#dbcfff; --border-strong:#4a3b6a; }
   }
   *{box-sizing:border-box}
   body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
     background:var(--bg);color:var(--ink);font-size:14px}
-  header{background:#1e2a38;color:#fff;padding:18px 22px}
+  header{background:linear-gradient(115deg,#071535,#142b73 48%,#3e1b7a);color:#fff;padding:18px 22px}
   header h1{margin:0;font-size:20px;font-weight:600;letter-spacing:.2px}
   header p{margin:4px 0 0;color:#9db4cf;font-size:13px}
   main{max-width:1100px;margin:0 auto;padding:16px 20px 40px}
@@ -36,6 +36,11 @@
   button.danger{background:var(--danger);color:#fff;font-weight:600}
   button.danger:hover{background:var(--danger-dk);filter:none}
   button.ghost{background:transparent;border:1px solid var(--line)}
+  button:focus-visible,select:focus-visible,input:focus-visible{outline:3px solid color-mix(in srgb,var(--accent) 32%,transparent);outline-offset:2px}
+  select{font:inherit;min-height:34px;padding:7px 30px 7px 10px;border:1px solid var(--line);border-radius:8px;
+    background:var(--card);color:var(--ink);box-shadow:0 1px 1px rgba(18,15,38,.03);cursor:pointer}
+  select:hover{border-color:var(--border-strong)}
+  select:disabled{opacity:.58;cursor:not-allowed;background:var(--chip)}
   .card{background:var(--card);border:1px solid var(--line);border-radius:12px}
   .queue{min-height:300px;max-height:52vh;overflow:auto;padding:8px;transition:outline .1s}
   .queue.drop{outline:2px dashed var(--accent);outline-offset:-6px;background:rgba(45,125,210,.07)}
@@ -55,21 +60,18 @@
   .teach-arrow svg{width:22px;height:22px}
   .teach h3{margin:0 0 4px;font-size:15px;font-weight:600;color:var(--ink)}
   .teach .sub{color:var(--muted);font-size:11.5px;margin-top:10px}
-  .qlook{position:fixed;z-index:15;display:none;gap:10px;background:var(--card);
-    border:1px solid var(--line);border-radius:10px;box-shadow:0 10px 28px rgba(0,0,0,.28);padding:10px}
-  .qlook.show{display:flex}
-  .qlook .pane{display:flex;flex-direction:column;align-items:center;gap:4px}
-  .qlook .pane img{width:130px;height:73px;border-radius:6px;object-fit:cover;background:#000}
-  .qlook .pane span{font-size:10px;color:var(--muted);font-weight:700;letter-spacing:.03em}
-  .row{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px}
+  .row{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;position:relative}
   .row:hover{background:var(--chip)}
-  .row .row-actions{display:flex;gap:4px;opacity:0;transition:opacity .1s;flex-shrink:0}
-  .row:hover .row-actions{opacity:1}
+  .row .row-actions{position:relative;display:block;flex-shrink:0}
+  .row-action-menu{display:none;position:absolute;right:0;top:34px;z-index:30;gap:6px;flex-wrap:wrap;width:max-content;max-width:min(430px,calc(100vw - 32px));max-height:min(50vh,330px);overflow:auto;padding:8px;border:1px solid var(--line);border-radius:9px;background:var(--card);box-shadow:0 10px 26px rgba(0,0,0,.22)}
+  .row-action-menu.open{display:flex}
   .drag-handle{cursor:grab;color:var(--muted);font-size:15px;user-select:none;width:14px;text-align:center}
   .row.dragging{opacity:.4}
   .row.drag-over{box-shadow:inset 0 2px 0 var(--accent)}
   .row input[type=checkbox]{width:16px;height:16px}
   .row .name-wrap{flex:1;min-width:0;display:flex;flex-direction:column}
+  .meta-skeleton{width:180px;height:11px;border-radius:5px;margin-top:5px;background:var(--chip);animation:pulse 1.1s ease-in-out infinite}
+  @keyframes pulse{0%{background-position:100% 0;opacity:.65}50%{opacity:1}100%{background-position:-100% 0;opacity:.65}}
   .row .name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .row .info{font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:1px}
   .mini{padding:5px 10px;font-size:12px;border:1px solid var(--line);background:transparent;border-radius:6px}
@@ -86,12 +88,20 @@
   .adjust summary .sum{font-weight:400;color:var(--muted);margin-left:2px}
   .adjust .options{padding:4px 16px 14px;margin:0}
   .adjust #customRate{margin:0 16px 14px}
-  .options{display:flex;gap:24px;flex-wrap:wrap;align-items:center;margin:14px 2px}
-  .options label{color:var(--muted);margin-right:10px}
+  .options{display:flex;gap:18px 24px;flex-wrap:wrap;align-items:center;margin:14px 2px}
+  .options label{color:var(--muted);margin-right:10px;font-size:12px;font-weight:600}
+  .engine-choice{display:grid;grid-template-columns:auto minmax(220px,1fr);align-items:center;gap:7px 10px;
+    flex:1 1 360px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg)}
+  .engine-choice label{margin:0}.engine-choice .hint{grid-column:1 / -1;margin:0;font-size:11px}
+  .engine-choice select{width:100%}
   .seg{display:inline-flex;background:var(--chip);border-radius:9px;padding:3px}
   .seg button{background:transparent;padding:6px 14px;border-radius:7px;font-size:13px;color:var(--muted)}
   .seg button.on{background:var(--card);color:var(--ink);font-weight:600;box-shadow:0 1px 2px rgba(0,0,0,.08)}
-  .now{padding:14px 16px;margin-top:6px}
+  .now{padding:14px 16px;margin-top:6px;display:flex;gap:16px;align-items:stretch}
+  .now-details{flex:1;min-width:0}
+  .running-preview{width:180px;display:none;position:relative;border-radius:7px;overflow:hidden;background:#090b10;flex-shrink:0}
+  .running-preview img{display:block;width:100%;height:100%;min-height:105px;object-fit:cover}
+  .running-preview span{position:absolute;left:6px;bottom:6px;padding:3px 5px;border-radius:4px;background:rgba(0,0,0,.65);color:#fff;font-size:9px;font-weight:700;letter-spacing:.04em}
   .now .lbl{font-size:11px;font-weight:700;letter-spacing:.5px;color:var(--muted)}
   .now .file{font-size:15px;font-weight:600;margin:2px 0}
   .phase-pill{display:inline-block;font-size:10px;font-weight:700;letter-spacing:.03em;
@@ -115,9 +125,14 @@
     font:inherit;padding:7px 9px;border:1px solid var(--line);border-radius:7px;
     background:var(--bg);color:var(--ink);width:100%}
   .set-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:18px}
-  .scopes{display:grid;grid-template-columns:1fr 1fr;gap:14px}
-  .scopes h3{margin:0 0 6px;font-size:14px}
-  .scopes img{width:100%;border-radius:8px;background:#000;display:block;margin-bottom:8px}
+  .scope-pair{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start}
+  .scope-pane{margin:0;border:1px solid var(--line);border-radius:9px;overflow:hidden;background:#000}
+  .scope-pane figcaption{padding:8px 10px;background:var(--card);color:var(--ink);font-size:13px;font-weight:600}
+  .scope-pane figcaption span{font-weight:400;color:var(--muted);margin-left:5px}
+  .scope-pane img{width:100%;aspect-ratio:16/9;object-fit:contain;background:#000;display:block}
+  .scope-pane.vector img{aspect-ratio:1/1}
+  .scope-key{display:flex;gap:7px;align-items:center;flex-wrap:wrap}
+  .scope-key .seg button{padding:5px 10px}
   .hint{color:var(--muted);font-size:13px;margin-top:8px;line-height:1.5}
   .row-inline{display:flex;gap:10px;align-items:center}
   .slv{width:64px;text-align:right;color:var(--ink);font-variant-numeric:tabular-nums}
@@ -147,6 +162,14 @@
   .pill.active{background:var(--accent-dim);border-color:var(--accent);color:var(--accent-text);font-weight:600}
   .pill.ghost-add{border-style:dashed;color:var(--muted)}
 
+  /* --- output destination: always visible, never a Settings-only surprise --- */
+  .export-target{display:flex;align-items:center;gap:8px;min-height:32px;margin:2px 2px 8px;
+    color:var(--muted);font-size:12px}
+  .export-target b{color:var(--ink);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .output-preview{font-family:var(--mono);font-size:11px;color:var(--muted)}
+  button.output-preview{padding:0;background:transparent;text-align:left;border-radius:0;cursor:pointer}
+  button.output-preview:hover{color:var(--accent);text-decoration:underline;filter:none}
+
   /* --- icon buttons + overflow menu (toolbar) --- */
   .icon-btn{width:32px;height:32px;padding:0;border-radius:8px;border:1px solid var(--line);
     background:var(--card);color:var(--muted);display:inline-flex;align-items:center;justify-content:center;
@@ -160,7 +183,7 @@
   .split-btn .chev{padding:8px 8px;border-left:1px solid rgba(255,255,255,.25)}
   .menu-wrap{position:relative;display:inline-block}
   .menu{position:absolute;right:0;top:38px;background:var(--card);border:1px solid var(--line);
-    border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.18);min-width:180px;padding:6px;z-index:20}
+    border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.18);min-width:180px;max-width:calc(100vw - 32px);max-height:min(60vh,420px);overflow:auto;padding:6px;z-index:20}
   .menu button{width:100%;text-align:left;background:none;border:0;font:inherit;font-size:13px;
     color:var(--ink);padding:8px 10px;border-radius:6px;cursor:pointer;display:flex;align-items:center;gap:9px}
   .menu button:hover{background:var(--chip)}
@@ -170,6 +193,23 @@
   .pct, .now .stats, .now .file, .slv, #batchStats, .row .info, #estimate{
     font-variant-numeric:tabular-nums}
   .pct, #batchStats, .row .info{font-family:var(--mono)}
+  .profile-row{display:flex;gap:6px;align-items:center;min-width:0}
+  .profile-badge{font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;font-size:9px;font-weight:700;letter-spacing:.04em;padding:2px 5px;border-radius:4px}
+  .profile-badge.custom{color:var(--accent-text);background:var(--accent-dim)}
+  .profile-badge.global{color:var(--muted);background:var(--chip)}
+  .profile-choices{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:8px 0 12px}
+  .profile-choice{padding:14px;text-align:left;border:1px solid var(--line);background:var(--card);min-height:78px}
+  .profile-choice b{display:block;font-size:14px;margin-bottom:4px}.profile-choice span{display:block;color:var(--muted);font-size:12px;line-height:1.35}
+  .profile-choice.active{border-color:var(--accent);background:var(--accent-dim);box-shadow:0 0 0 1px var(--accent)}
+  .row.selected{background:var(--accent-dim);box-shadow:inset 3px 0 0 var(--accent)}
+  .inspector{display:none;margin-top:10px;padding:14px 16px}.inspector.on{display:block}
+  .inspector-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;border-top:1px solid var(--line);border-left:1px solid var(--line)}
+  .inspector-grid>div{min-width:0;padding:10px 11px;background:var(--bg);border-right:1px solid var(--line);border-bottom:1px solid var(--line)}
+  .inspector-grid span{display:block;color:var(--muted);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px}.inspector-grid b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px}
+  .convert-dock{position:sticky;bottom:0;z-index:8;margin-top:12px;padding:10px 14px;background:color-mix(in srgb,var(--card) 94%,transparent);backdrop-filter:blur(14px);box-shadow:0 -8px 24px rgba(0,0,0,.08)}
+  .convert-dock .actions{margin:8px 0 2px}.completion{display:none;padding:18px;margin:10px 0}.completion.on{display:block}
+  .completion h2{margin:0 0 6px}.completion-stats{font-size:16px;font-weight:600;margin:6px 0}.completion-path{font-family:var(--mono);font-size:11px;color:var(--muted);word-break:break-all}
+  @media(max-width:700px){.profile-choices{grid-template-columns:1fr}.inspector-grid{grid-template-columns:1fr}.row{align-items:flex-start}.row .status{width:auto;min-width:64px}.row .pct{width:42px}.now{display:block}.running-preview{width:100%;height:150px;margin-top:12px}.scope-pair{grid-template-columns:1fr}.engine-choice{grid-template-columns:1fr}.engine-choice select{width:100%}}
 </style>
 </head>
 <body>
@@ -178,7 +218,7 @@
     <img id="headerIcon" alt="" style="width:22px;height:22px;border-radius:5px;flex-shrink:0">
     <div>
       <h1 style="margin:0">8-bit → 10-bit Converter</h1>
-      <p style="margin:2px 0 0">Debands gradients and re-encodes to true 10-bit · batch-capable</p>
+      <p id="headerSubtitle" style="margin:2px 0 0">Debands gradients and re-encodes to true 10-bit · batch-capable</p>
     </div>
   </div>
 </header>
@@ -209,24 +249,32 @@
       </button>
       <div class="menu" id="moreMenu" style="display:none">
         <button onclick="toggleWatchPanel();closeAllMenus()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg><span id="watchMenuLabel">Watch folder…</span></button>
+        <button onclick="analyzeQueue();closeAllMenus()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 19V5m0 14h16M8 15l3-4 3 2 5-6"/></svg>Analyze gradients (experimental)</button>
+        <button onclick="applySmartQueue();closeAllMenus()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v18M3 12h18"/></svg>Apply gradient recommendations</button>
         <button onclick="openReport();closeAllMenus()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 11H5a2 2 0 00-2 2v7a2 2 0 002 2h4m0-11v11m0-11h6l4 4v5a2 2 0 01-2 2h-8m0-11L9 4"/></svg>Last report…</button>
-        <button onclick="clearQueue();closeAllMenus()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 6h18M8 6V4a1 1 0 011-1h6a1 1 0 011 1v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6h14z"/></svg>Clear queue</button>
+        <button onclick="openHistory();closeAllMenus()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 12a9 9 0 109-9 9.2 9.2 0 00-6.4 2.6L3 8m0-5v5h5"/><path d="M12 7v5l3 2"/></svg>Conversion history…</button>
+        <button onclick="clearQueue();closeAllMenus()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 6h18M8 6V4a1 1 0 011-1h6a1 1 0 011 1v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6h14z"/></svg>Clear saved queue</button>
         <button onclick="document.getElementById('mHelp').classList.add('on');closeAllMenus()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 015.83 1c0 2-3 2-3 4M12 17h.01"/></svg>What this does…</button>
       </div>
     </div>
   </div>
 
-  <div class="toolbar" style="margin-top:0">
-    <label style="color:var(--muted);align-self:center;margin-right:2px">Presets</label>
-    <button class="pill" id="presetBtn-delivery" onclick="applyPreset('delivery')" title="HEVC · Match source · Medium deband">Delivery</button>
-    <button class="pill" id="presetBtn-grading" onclick="applyPreset('grading')" title="ProRes 4444 · High deband · 16-bit">Grading</button>
-    <button class="pill" id="presetBtn-preserve" onclick="applyPreset('preserve')" title="HEVC · Match source · 16-bit · copy audio">Max preservation</button>
-    <span id="customPresets" style="display:contents"></span>
-    <button class="pill ghost-add" onclick="saveCustomPreset()">＋ Save current as preset…</button>
+  <div id="profileChooser" class="profile-choices">
+    <button class="profile-choice active" id="profile-faithful" onclick="applyTopProfile('faithful')"><b>Faithful 10-bit</b><span>HEVC Main10 · smooth gradients · no invented detail</span></button>
+    <button class="profile-choice" id="profile-editing" onclick="applyTopProfile('editing')"><b>Editing master</b><span>ProRes 4444 · grading-ready · very large files</span></button>
+    <button class="profile-choice" id="profile-advanced" onclick="applyTopProfile('advanced')"><b>Advanced</b><span>Choose codec, deband amount, bitrate, and custom values</span></button>
+    <span id="customPresets" style="display:none"></span>
+  </div>
+
+  <div class="export-target" id="exportTarget">
+    <span>Exports</span><b id="exportTargetText">next to each source</b>
+    <button class="mini" onclick="openSettings()">Change…</button>
   </div>
 
   <div id="bulkBar" class="row-inline" style="display:none;margin:8px 2px 0;gap:10px">
     <span class="hint" style="margin:0" id="bulkCount"></span>
+    <button class="mini" id="copyProfileBtn" onclick="copyFirstProfileToSelected()">Copy first profile</button>
+    <button class="mini" onclick="resetSelectedProfiles()">Reset to global</button>
     <button class="mini" onclick="removeSel()">Remove selected</button>
     <button class="mini" onclick="clearSelection()">Clear selection</button>
   </div>
@@ -248,20 +296,29 @@
   <div id="batchSummaryBanner" class="banner banner-low" style="display:none;align-items:center;gap:10px">
     <span id="batchSummaryText" style="flex:1"></span>
     <button class="mini" onclick="openReport()">View report</button>
+    <button class="mini" id="retryFailedBtn" onclick="retryFailed()" style="display:none">Retry failed</button>
+    <button class="mini" id="revealAllBtn" onclick="revealAllExports()" style="display:none">Reveal exports</button>
     <button class="mini" onclick="document.getElementById('batchSummaryBanner').style.display='none'" title="Dismiss">✕</button>
+  </div>
+  <div class="card completion" id="completionPanel" role="status" aria-live="polite">
+    <h2>Conversion complete</h2><div class="completion-stats" id="completionStats"></div><div class="completion-path" id="completionPath"></div>
+    <div class="row-inline" style="margin-top:12px;flex-wrap:wrap"><button class="mini" onclick="revealAllExports()">Reveal all</button><button class="mini" id="completionRetry" onclick="retryFailed()">Retry failed</button><button class="mini" onclick="copyLastReport()">Copy report</button><button class="primary" style="padding:8px 16px;font-size:13px" onclick="startAnotherBatch()">Start another batch</button></div>
   </div>
   <div class="card queue" id="queue"></div>
 
-  <details class="adjust">
+  <div class="card inspector" id="inspectorPanel"><div class="row-inline" style="justify-content:space-between;margin-bottom:10px"><b id="inspectorTitle">Video inspector</b><button class="mini" onclick="selectedRowIndex=null;renderQueue(queue);renderInspector()">Close</button></div><div class="inspector-grid" id="inspectorGrid"></div><div class="row-inline" style="margin-top:12px;flex-wrap:wrap"><button class="primary" id="samplePreviewBtn" style="padding:8px 14px;font-size:13px" onclick="previewSelectedSample()">Preview processed sample</button><button class="mini" onclick="openPlayer(selectedRowIndex)">Preview source</button><button class="mini" onclick="openClipSettings(selectedRowIndex)">Advanced options</button><button class="mini" onclick="openScopes(selectedRowIndex)">Scopes</button></div></div>
+
+  <details class="adjust" id="advancedPanel" style="display:none">
     <summary>
       <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 6l6 6-6 6"/></svg>
-      Adjust
+      Advanced controls
       <span class="sum" id="adjustSummary">— HEVC · Medium deband · Match source</span>
     </summary>
     <div class="options">
       <div><label>Format</label>
         <span class="seg" id="segMode">
           <button data-v="HEVC (smaller, delivery)" class="on">HEVC</button>
+          <button data-v="H.264 (10-bit, delivery)">H.264 10-bit · limited support</button>
           <button data-v="ProRes 4444 (grading, huge file)">ProRes 4444</button>
         </span>
       </div>
@@ -273,12 +330,19 @@
           <button data-v="Custom">Custom</button>
         </span>
       </div>
-      <div><label>Bitrate</label>
+      <div id="adjustRate"><label>Bitrate</label>
         <span class="seg" id="segRate">
           <button data-v="Match source" class="on">Match source</button>
           <button data-v="Quality (CRF)">Quality</button>
           <button data-v="Custom">Custom</button>
         </span>
+      </div>
+      <div id="proresRateNote" class="hint" style="display:none;margin:0">Codec-managed · ProRes 4444 chooses its own data rate.</div>
+      <div class="engine-choice" style="margin-top:10px">
+        <label for="engineSelect">Processing engine</label>
+        <select id="engineSelect"><option value="ffmpeg-deband-v1">Faithful CPU deband (recommended)</option>
+          <option value="libplacebo-deband-v1" disabled>High-quality GPU deband (checking…)</option></select>
+        <div id="engineCapabilityNote" class="hint" hidden style="margin:5px 0 0"></div>
       </div>
     </div>
 
@@ -289,25 +353,37 @@
       <div id="crZone" style="height:6px;border-radius:3px;margin-top:8px;background:var(--chip)"></div>
       <div id="crVerdict" class="hint" style="margin-top:5px"></div>
     </div>
+    <div id="customDeband" class="card" style="display:none;padding:12px 14px;margin:10px 0 0">
+      <div class="row-inline"><label style="color:var(--muted);width:110px">Custom threshold</label>
+        <input type="range" id="customDebandRange" min="0.005" max="0.080" step="0.001" value="0.030" style="flex:1">
+        <input type="number" id="customDebandNumber" min="0.005" max="0.080" step="0.001" value="0.030" style="width:76px">
+      </div>
+      <div id="customDebandZone" style="height:6px;border-radius:3px;margin-top:8px;background:var(--chip)"></div>
+      <div id="customDebandVerdict" class="hint" style="margin-top:5px"></div>
+    </div>
   </details>
 
   <div class="card now">
-    <div class="lbl">NOW RUNNING</div>
-    <div class="file" id="nowFile">—</div>
-    <div class="stats" id="nowStats">idle</div>
-    <div class="bar"><i id="bar"></i></div>
-    <div class="stats" id="batchStats" style="margin-top:10px"></div>
-    <div class="bar" id="batchBarWrap" style="display:none"><i id="batchBar" style="background:#1a7f37"></i></div>
+    <div class="now-details">
+      <div class="lbl">NOW RUNNING</div>
+      <div class="file" id="nowFile">—</div>
+      <div class="stats" id="nowStats">idle</div>
+      <div class="bar"><i id="bar"></i></div>
+      <div class="stats" id="batchStats" style="margin-top:10px"></div>
+      <div class="bar" id="batchBarWrap" style="display:none"><i id="batchBar" style="background:#1a7f37"></i></div>
+    </div>
+    <div class="running-preview" id="runningPreview"><img id="runningPreviewImage" alt="Current source frame"><span>LIVE SOURCE FRAME</span></div>
   </div>
 
-  <div id="estimate" class="statusbar" style="margin:6px 0 2px"></div>
-  <div class="actions">
-    <button class="primary" id="btnConvert" onclick="convert()" disabled>Convert</button>
-    <button class="ghost" id="btnStopAfter" onclick="stopAfterCurrent()" disabled
-      title="Finish the file in progress, then stop — no partial output">Stop after current</button>
-    <button class="danger" id="btnCancel" onclick="cancel()" disabled>Cancel</button>
+  <div class="card convert-dock">
+    <div id="estimate" class="statusbar" style="margin:0"></div>
+    <div class="actions">
+      <button class="primary" id="btnConvert" onclick="convert()" disabled>Convert</button>
+      <button class="ghost" id="btnStopAfter" onclick="stopAfterCurrent()" disabled title="Finish the file in progress, then stop — no partial output">Stop after current</button>
+      <button class="danger" id="btnCancel" onclick="cancel()" disabled>Cancel</button>
+    </div>
+    <div class="statusbar" id="status">Add files or a folder to begin.</div>
   </div>
-  <div class="statusbar" id="status">Add files or a folder to begin.</div>
   <div style="text-align:center;color:var(--muted);font-size:12px;margin-top:14px">
     Built by <b>Jazib Ali 360</b> · deband + dither + true 10-bit
   </div>
@@ -325,24 +401,29 @@
       <button class="ghost" onclick="pickDest()">Browse…</button></div>
     <label>Filename suffix</label><input type="text" id="st_suffix">
     <label>If output exists</label>
-    <select id="st_on_exists"><option value="skip">Skip</option>
-      <option value="overwrite">Overwrite</option></select>
+    <select id="st_on_exists"><option value="skip">Skip — keep the existing file</option>
+      <option value="overwrite">Overwrite — replace the existing file</option>
+      <option value="rename">Keep both — add -2, -3, …</option></select>
     <label>Audio</label>
     <select id="st_audio"><option value="copy">Copy (no re-encode)</option>
       <option value="aac">Re-encode to AAC 192k</option></select>
     <label>Dual export</label>
     <select id="st_dual_export"><option value="false">Off</option>
       <option value="true">On — also cut an HEVC preview (ProRes format only)</option></select>
-    <h3>Bitrate / quality (HEVC only)</h3>
-    <label>Target for Custom (Mbps)</label>
-    <div class="row-inline"><input type="range" id="st_target_mbps" min="1" max="100" step="0.5" style="flex:1"><span id="st_target_mbps_v" class="slv"></span></div>
-    <label>CRF (Quality mode)</label>
-    <div>
+    <label>Live encoding frame</label>
+    <select id="st_live_preview"><option value="false">Off — maximum encode speed</option>
+      <option value="true">On — uses extra processing while converting</option></select>
+    <div id="advancedSettingsFields" style="display:none">
+    <h3 class="hevc-only">Quality &amp; speed (HEVC and H.264 only)</h3>
+    <label class="hevc-only">CRF (Quality mode)</label>
+    <div class="hevc-only">
       <div class="row-inline"><input type="range" id="st_crf" min="0" max="51" step="1" style="flex:1"><span id="st_crf_v" class="slv"></span></div>
       <div class="zonebar" id="st_crf_zone"></div>
       <div class="hint" id="st_crf_hint" style="margin-top:2px"></div>
     </div>
-    <label>Encoder preset</label><select id="st_preset"></select>
+    <label class="hevc-only">Encoder preset</label><select id="st_preset" class="hevc-only" title="Slow is the high-quality default. Slower presets mostly improve compression efficiency, not recovered image detail."></select>
+    <div class="hint hevc-only" style="grid-column:2;margin:-7px 0 0">Slow is the high-quality default. Slower presets mostly trade much more time for smaller files.</div>
+    <div id="proresSettingsNote" class="hint" style="display:none;grid-column:1 / -1">ProRes 4444 uses a codec-managed data rate. HEVC/H.264 bitrate, CRF, encoder preset, and two-pass settings do not apply.</div>
     <h3>Deband &amp; dither</h3>
     <label>Deband range</label>
     <div>
@@ -358,15 +439,15 @@
       <div class="zonebar" id="st_dither_zone"></div>
       <div class="hint" id="st_dither_hint" style="margin-top:2px"></div>
     </div>
-    <label>Custom threshold</label><input type="text" id="st_thr_custom">
     <label>Deflicker</label>
     <select id="st_deflicker"><option value="false">Off</option><option value="true">On (luminance flicker)</option></select>
     <label>Max quality (16-bit)</label>
     <select id="st_max_quality"><option value="false">Off (faster)</option><option value="true">On (cleaner gradients, slower)</option></select>
     <label>Denoise</label>
     <select id="st_denoise"><option value="off">Off</option><option value="light">Light (softens slightly)</option><option value="medium">Medium (softens more)</option></select>
-    <label>Two-pass encode</label>
-    <select id="st_two_pass"><option value="false">Off</option><option value="true">On (accurate bitrate, ~2× time)</option></select>
+    <label class="hevc-only">Two-pass encode</label>
+    <select id="st_two_pass" class="hevc-only"><option value="false">Off</option><option value="true">On (accurate bitrate, ~2× time)</option></select>
+    </div>
   </div>
   <div class="set-actions">
     <button class="ghost" onclick="closeModal('mSettings')">Cancel</button>
@@ -374,10 +455,57 @@
   </div>
 </div></div>
 
-<div class="modal" id="mScopes"><div class="sheet">
-  <h2 id="scopesTitle">Scopes</h2>
+<div class="modal" id="mClipSettings"><div class="sheet" style="max-width:560px">
+  <h2>Video settings</h2>
+  <p class="hint" id="clipSettingsName" style="margin:0"></p>
+  <p class="hint" style="margin:3px 0 14px">Format, deband, and bitrate can override the global defaults for this video. Output folder and advanced processing stay global.</p>
+  <div class="set-grid">
+    <h3>Export profile</h3>
+    <label>Use</label>
+    <select id="clipUseDefaults" onchange="syncClipSettings()">
+      <option value="true">Global defaults</option>
+      <option value="false">Custom settings for this video</option>
+    </select>
+    <div id="clipOverrideFields" style="display:contents">
+      <label>Format</label>
+      <select id="clipMode" onchange="syncClipSettings()">
+        <option value="HEVC (smaller, delivery)">HEVC (smaller, delivery)</option>
+        <option value="H.264 (10-bit, delivery)">H.264 10-bit (delivery)</option>
+        <option value="ProRes 4444 (grading, huge file)">ProRes 4444 (grading, huge file)</option>
+      </select>
+      <label>Deband</label>
+      <select id="clipStrength"><option>Low</option><option>Medium</option><option>High</option><option>Custom</option></select>
+      <label id="clipRateLabel">Bitrate</label>
+      <select id="clipRate" onchange="syncClipSettings()">
+        <option value="Match source">Match source</option><option value="Quality (CRF)">Quality (CRF)</option><option value="Custom">Custom</option>
+      </select>
+      <label id="clipTargetLabel">Custom target</label>
+      <div class="row-inline" id="clipTargetWrap"><input type="range" id="clipTarget" min="1" max="100" step="0.5" style="flex:1" oninput="clipTargetValue.textContent=(+this.value).toFixed(1)+' Mbps'"><span id="clipTargetValue" class="slv"></span></div>
+      <div id="clipProResNote" class="hint" style="display:none;grid-column:1 / -1">ProRes 4444 is codec-managed, so bitrate controls do not apply. H.264 10-bit needs a compatible player or editor.</div>
+    </div>
+  </div>
+  <div class="set-actions">
+    <button class="ghost" onclick="resetClipSettings()">Reset to global</button>
+    <button class="ghost" onclick="closeModal('mClipSettings')">Cancel</button>
+    <button class="primary" style="padding:9px 22px;font-size:14px" onclick="saveClipSettings()">Use these settings</button>
+  </div>
+</div></div>
+
+<div class="modal" id="mScopes"><div class="sheet" style="max-width:1400px">
+  <div class="row-inline" style="justify-content:space-between;margin-bottom:8px">
+    <h2 id="scopesTitle" style="margin:0">Scopes</h2>
+  </div>
+  <div class="scope-key" style="margin-bottom:10px"><span class="hint" style="margin:0">View</span>
+    <span class="seg" id="scopeType">
+      <button data-scope="waveform" class="on" onclick="setScopeType('waveform')">Waveform</button>
+      <button data-scope="parade" onclick="setScopeType('parade')">RGB Parade</button>
+      <button data-scope="vectorscope" onclick="setScopeType('vectorscope')">Vectorscope</button>
+      <button data-scope="histogram" onclick="setScopeType('histogram')">Histogram</button>
+    </span>
+  </div>
   <div id="scopesFilm" class="strip"></div>
   <div id="scopesBody" class="hint">Rendering…</div>
+  <div class="hint">Scopes are high-resolution readings of the exact selected frame. Left is source; right is the processing preview. Click a filmstrip frame to change the moment.</div>
   <div class="set-actions"><button class="ghost" onclick="closeModal('mScopes')">Close</button></div>
 </div></div>
 
@@ -408,6 +536,12 @@
   <div class="set-actions"><button class="ghost" onclick="closeModal('mReport')">Close</button></div>
 </div></div>
 
+<div class="modal" id="mHistory"><div class="sheet" style="max-width:1100px">
+  <h2>Conversion history</h2>
+  <div id="historyBody" class="hint">Loading…</div>
+  <div class="set-actions"><button class="ghost" onclick="closeModal('mHistory')">Close</button></div>
+</div></div>
+
 <div class="modal" id="mOverwrite"><div class="sheet">
   <h2>Overwrite existing files?</h2>
   <p class="hint">Settings is set to <b>overwrite</b> if the output already exists.
@@ -417,6 +551,12 @@
     <button class="ghost" onclick="ovwResolve(false)">Cancel</button>
     <button class="danger" style="padding:9px 22px" onclick="ovwResolve(true)">Overwrite and convert</button>
   </div>
+</div></div>
+
+<div class="modal" id="mPreflight"><div class="sheet" style="max-width:820px">
+  <h2>Ready to export</h2>
+  <div id="preflightBody" class="hint">Checking your batch…</div>
+  <div class="set-actions"><button class="ghost" onclick="closeModal('mPreflight')">Back</button><button class="primary" id="preflightConvertBtn" onclick="startFromPreflight()">Convert batch</button></div>
 </div></div>
 
 <div class="modal" id="mCompare"><div class="sheet">
@@ -444,26 +584,83 @@
   <div class="set-actions"><button class="ghost" onclick="closeModal('mCompare')">Close</button></div>
 </div></div>
 
-<div class="qlook" id="qlPopup">
-  <div class="pane"><img id="qlBefore" alt="before"><span>BEFORE</span></div>
-  <div class="pane"><img id="qlAfter" alt="after"><span>AFTER</span></div>
-</div>
+<div class="modal" id="mPlayer"><div class="sheet" style="max-width:980px">
+  <div class="row-inline" style="justify-content:space-between;margin-bottom:10px"><h2 id="playerTitle" style="margin:0">Preview</h2>
+    <div class="seg" id="playerChoice"><button data-player="source" class="on" onclick="setPlayerSource('source')">Source</button><button data-player="output" id="playerOutputBtn" onclick="setPlayerSource('output')" style="display:none">Export</button></div></div>
+  <video id="previewVideo" controls playsinline preload="metadata" style="width:100%;max-height:66vh;background:#000;border-radius:9px"></video>
+  <div class="hint">Use the native controls for playback, sound, and timeline scrubbing. Switch to Export after conversion to review the final file.</div>
+  <div class="set-actions"><button class="ghost" onclick="closePlayer()">Close</button></div>
+</div></div>
 
+<script src="ui/engine-status.js" defer></script>
 <script>
 const API = "";
+</script>
+<script src="ui/api.js"></script>
+<script src="ui/state.js"></script>
+<script src="ui/profiles.js"></script>
+<script src="ui/modals.js"></script>
+<script>
 const APP_ICON = "data:image/png;base64,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";
 document.getElementById("favicon").href = APP_ICON;
 document.getElementById("headerIcon").src = APP_ICON;
-let SETTINGS = {};
-let queue = [];            // [{path,name,status,pct,dur,kbps,width,height,fps}]
-let running = false;
-let wasRunning = false;
-let mode = "HEVC (smaller, delivery)";
-let strength = "Medium";
-let rate = "Match source";
-
-function j(url, opts){ return fetch(API+url, opts).then(r=>r.json()); }
+// The JZB mark is the visual source for both the native bundle and in-app chrome.
+document.getElementById("favicon").href = "JZB.png";
+document.getElementById("headerIcon").src = "JZB.png";
+async function j(url, opts){
+  return apiJson(url, opts);
+}
 function setStatus(t){ document.getElementById("status").textContent = t; }
+function isBrowserIntake(path){ return /\/10bit_intake_[^/]+\//.test(path||""); }
+function formatLabel(m){ return m.startsWith("ProRes") ? "ProRes 4444" : m.startsWith("H.264") ? "H.264 10-bit" : "HEVC"; }
+function profileFor(it={}){
+  const o=it.override||{};
+  return {mode:o.mode||mode,strength:o.strength||strength,rate:o.rate||rate,
+    target_mbps:o.target_mbps??SETTINGS.target_mbps??12,custom:!!it.override};
+}
+function profileSummary(it){
+  const p=profileFor(it);
+  return `${p.custom?"Custom":"Global"} · ${formatLabel(p.mode)} · ${p.strength} deband${p.mode.startsWith("ProRes")?"":" · "+p.rate}`;
+}
+function profileSummaryHtml(it){
+  const p=profileFor(it), kind=p.custom?"custom":"global";
+  const label=p.custom?"CUSTOM":"GLOBAL";
+  return `<span class="profile-badge ${kind}">${label}</span> ${escHtml(formatLabel(p.mode))} · ${escHtml(p.strength)} deband${p.mode.startsWith("ProRes")?"":" · "+escHtml(p.rate)}`;
+}
+function outputPreviewFor(it){
+  const suffix=it.output_suffix||SETTINGS.suffix||"_10bit";
+  const prores=profileFor(it).mode.startsWith("ProRes");
+  const sourceName=(it.name||"video").replace(/\.[^.]+$/,"");
+  const filename=`${sourceName}${suffix}.${prores?"mov":"mp4"}`;
+  let folder="";
+  if(SETTINGS.dest_mode==="custom" && SETTINGS.dest_dir) folder=SETTINGS.dest_dir;
+  else if(isBrowserIntake(it.path)) folder="~/Downloads";
+  else folder=(it.path||"").replace(/\/[^/]*$/,"") || "next to source";
+  const full=it.out||`${folder.replace(/\/$/,"")}/${filename}`;
+  const short=folder==="~/Downloads" ? `Downloads/${filename}` : `${folder.split("/").filter(Boolean).pop()||folder}/${filename}`;
+  return {full,short:it.out?`${full.split("/").filter(Boolean).slice(-2).join("/")}`:short};
+}
+function saveQueueState(){
+  if(!queueReady) return;
+  const pending=queue.filter(it=>it.status!=="Done").map(it=>({path:it.path,override:it.override||null,output_suffix:it.output_suffix||""}));
+  localStorage.setItem("tenbit.pendingQueue.v1",JSON.stringify(pending));
+}
+async function restoreQueue(){
+  let saved=[]; try{saved=JSON.parse(localStorage.getItem("tenbit.pendingQueue.v1")||"[]")||[];}catch(_){}
+  if(saved.length){
+    const r=await j("/api/restore-queue",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({items:saved})});
+    queue=(r.items||[]).map(it=>({...it,status:"Queued",pct:""}));
+    if(queue.length) setStatus(`Restored ${queue.length} pending file(s).`);
+  }
+  queueReady=true; renderQueue(queue); refreshConvert();
+}
+function updateExportTarget(){
+  const suffix=SETTINGS.suffix||"_10bit";
+  const text=SETTINGS.dest_mode==="custom" && SETTINGS.dest_dir
+    ? `to ${SETTINGS.dest_dir} · ${suffix}`
+    : `next to each source · ${suffix}`;
+  document.getElementById("exportTargetText").textContent=text;
+}
 
 function segInit(id, cb){
   document.getElementById(id).querySelectorAll("button").forEach(b=>{
@@ -471,48 +668,20 @@ function segInit(id, cb){
       b.classList.add("on"); cb(b.dataset.v); };
   });
 }
-segInit("segMode", v=>{mode=v; updateCustomRate(); updateEstimate(); setActivePreset(null);});
-segInit("segStr", v=>{strength=v; updateEstimate(); setActivePreset(null);});
+segInit("segMode", v=>{mode=v; syncFormatUI(); updateCustomRate(); updateEstimate(); setActivePreset(null);});
+segInit("segStr", v=>{strength=v; updateCustomDeband(); updateEstimate(); setActivePreset(null);});
 segInit("segRate", v=>{ rate=v; updateCustomRate(); updateEstimate(); setActivePreset(null); });
+document.getElementById("engineSelect").addEventListener("change", async e=>{
+  SETTINGS.engine=e.target.value;
+  await saveOne({engine:e.target.value});
+  setStatus(e.target.value==="libplacebo-deband-v1" ? "Experimental GPU engine selected." : "Faithful CPU engine selected.");
+});
 
 // ---- overflow menus (Add split-button chevron, ⋯ More) ----
-function closeAllMenus(){ document.querySelectorAll(".menu").forEach(m=>m.style.display="none"); }
-function toggleMenu(e,id){
-  e.stopPropagation();
-  const el=document.getElementById(id);
-  const willOpen = el.style.display==="none";
-  closeAllMenus();
-  el.style.display = willOpen? "block":"none";
-}
-document.addEventListener("click",e=>{ if(!e.target.closest(".menu-wrap")) closeAllMenus(); });
-
 function setSeg(id,val){ const b=[...document.getElementById(id).querySelectorAll("button")].find(x=>x.dataset.v===val); if(b) b.click(); }
-const PRESETS={
-  delivery:{label:"Delivery",mode:"HEVC (smaller, delivery)",strength:"Medium",rate:"Match source",settings:{max_quality:false,audio:"copy"}},
-  grading:{label:"Grading",mode:"ProRes 4444 (grading, huge file)",strength:"High",rate:"Quality (CRF)",settings:{max_quality:true,audio:"copy"}},
-  preserve:{label:"Max preservation",mode:"HEVC (smaller, delivery)",strength:"Medium",rate:"Match source",settings:{max_quality:true,audio:"copy"}},
-};
-async function applyPreset(name){
-  const p=PRESETS[name]; if(!p) return;
-  setSeg("segMode",p.mode); setSeg("segStr",p.strength); setSeg("segRate",p.rate);
-  const cur=await j("/api/settings");
-  SETTINGS={...cur,...p.settings};
-  await j("/api/settings",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(SETTINGS)});
-  updateCustomRate(); updateEstimate();
-  setActivePreset(name);
-  setStatus(`Preset applied: ${p.label}.`);
-}
 
 // Highlights the currently-in-effect preset pill. null = none (user changed
 // Format/Deband/Bitrate manually since applying one, per the segInit hooks above).
-function setActivePreset(key){
-  ["delivery","grading","preserve"].forEach(k=>{
-    const b=document.getElementById("presetBtn-"+k); if(b) b.classList.toggle("active", k===key);
-  });
-  document.querySelectorAll("#customPresets [data-preset]").forEach(b=>{
-    b.classList.toggle("active", b.dataset.preset===key);
-  });
-}
 
 // ---- custom (user-saved) presets ----
 function escAttr(s){ return s.replace(/&/g,"&amp;").replace(/"/g,"&quot;"); }
@@ -546,7 +715,7 @@ async function applyCustomPreset(name){
   const cur=await j("/api/settings");
   SETTINGS={...cur,...p.settings};
   await j("/api/settings",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(SETTINGS)});
-  updateCustomRate(); updateEstimate();
+  updateExportTarget(); updateCustomRate(); updateEstimate();
   setActivePreset(name);
   setStatus(`Preset applied: ${name}.`);
 }
@@ -557,8 +726,14 @@ async function deleteCustomPreset(name){
   setStatus(`Deleted preset "${name}".`);
 }
 
+/* Moved to ui/queue.js and ui/conversion.js. Kept temporarily as a source-map reference while this release line stabilizes.
+let queueLayoutKey="";
+function queueLayoutSignature(items){
+  return JSON.stringify(items.map(it=>[it.path,it.name,it.status,it.out,it.info,it.error,it.recovery,it.log_path,it.loading,it.output_suffix,JSON.stringify(it.override||null)]));
+}
 function renderQueue(items){
   const q=document.getElementById("queue");
+  document.getElementById("headerSubtitle").style.display=items.length?"none":"block";
   if(!items.length){ q.innerHTML=`<div class="empty">
       <div class="teach-illust">
         <div class="swatch banded"><span class="cap">8-BIT</span></div>
@@ -566,67 +741,81 @@ function renderQueue(items){
         <div class="swatch smooth"><span class="cap">10-BIT</span></div>
       </div>
       <h3>Drag a clip here, or click Add</h3>
-      <div>Each file is converted to <b>NAME_10bit</b> next to the original (dropped files go to your Downloads, or a folder you choose in Settings).</div>
+      <div>Each file is converted to <b>NAME_10bit</b> next to the original, or to the folder selected in Settings.</div>
       <div class="sub">100% local — nothing ever leaves your Mac</div>
-    </div>`; return; }
+    </div>`; queueLayoutKey=queueLayoutSignature(items); renderInspector(); return; }
   q.innerHTML="";
   items.forEach((it,i)=>{
-    const r=document.createElement("div"); r.className="row";
+    const r=document.createElement("div"); r.className="row"+(i===selectedRowIndex?" selected":"");
     r.draggable=!running; r.dataset.i=i;
     if(!running) r.classList.add("draggable");
     const st=it.status||"Queued";
     const srcInfo=(it.width&&it.height)
       ? `${it.width}×${it.height} · ${(it.codec||"?").toUpperCase()} · ${it.bits||8}-bit · ${it.fps||"?"} fps · ${it.kbps?(it.kbps/1000).toFixed(1)+" Mbps":"?"} · ${fmtT(it.dur)}\n${it.path||""}`
       : (it.path||"");
+    const output=outputPreviewFor(it);
+    const loading=!!it.loading;
     r.innerHTML=`<span class="drag-handle" title="Drag to reorder">⠿</span>
       <input type="checkbox" data-i="${i}" ${running?'disabled':''}>
-      <span class="name-wrap"><span class="name" title="${srcInfo.replace(/"/g,'&quot;')}">${st==='Running'?`<span class="phase-pill">${currentPhase}</span>`:''}${it.name}</span>
-        ${it.info?`<span class="info">${it.info}</span>`:''}</span>
+      <span class="name-wrap"><span class="name" title="${escHtml(srcInfo)}">${st==='Running'?`<span class="phase-pill">${escHtml(currentPhase)}</span>`:''}${escHtml(it.name)}</span>
+        ${loading?`<span class="meta-skeleton"></span>`:`<span class="profile-row"><button class="output-preview" data-clip="${i}" title="Change this video's export settings">${profileSummaryHtml(it)} · ${st==='Done'?'Saved':'Export'}: ${escHtml(output.short)}</button>${it.override?`<button class="mini" data-resetclip="${i}" title="Reset this video to global settings">Reset</button>`:''}</span>`}
+        ${it.smart?`<span class="info">Experimental gradient estimate: ${escHtml(it.smart.recommended_strength)} deband · sample at ${fmtT(it.smart.worst_time||0)}</span>`:''}
+        ${it.info?`<span class="info">${escHtml(it.info)}</span>`:''}
+        ${st==='Failed'&&it.recovery?`<span class="info">${escHtml(it.recovery)}</span>`:''}</span>
       <span class="row-actions">
-        <button class="mini" data-scopes="${i}" title="Preview scopes">Scopes</button>
-        <button class="mini" data-band="${i}" title="Check banding">Band</button>
-        ${(st==='Done'&&it.out)?`<button class="mini" data-cmp="${i}">Compare</button><button class="mini" data-rev="${i}">Reveal</button>`:''}
-        ${(st==='Failed'&&it.error)?`<button class="mini" data-err="${i}">why?</button>`:''}
+        <button class="mini" data-row-actions="${i}">More</button>
+        <span class="row-action-menu" id="rowActions${i}">
+          <button class="mini" data-play="${i}">Preview</button>
+          ${!running?`<button class="mini" data-clip="${i}">Video settings</button>`:''}
+          <button class="mini" data-band="${i}">Analyze gradients (experimental)</button>
+          <button class="mini" data-scopes="${i}">Scopes</button>
+          ${!running?`<button class="mini" data-duplicate="${i}">Duplicate export</button>`:''}
+          ${(!running&&it.override)?`<button class="mini" data-resetclip="${i}">Reset to global</button>`:''}
+          ${(st==='Done'&&it.out)?`<button class="mini" data-cmp="${i}">Compare</button><button class="mini" data-rev="${i}">Reveal</button>`:''}
+          ${(st==='Failed'&&it.error)?`<button class="mini" data-err="${i}">Why it failed</button>${it.log_path?`<button class="mini" data-log="${i}">Reveal log</button>`:''}`:''}
+          ${!running?`<button class="mini" data-remove="${i}">Remove</button>`:''}
+        </span>
       </span>
       <span class="status s-${st}">${st}</span>
       <span class="pct">${it.pct||""}</span>`;
     q.appendChild(r);
-    if(st==='Done' && it.out){
-      r.addEventListener('mouseenter',()=>{ clearTimeout(qlTimer); qlTimer=setTimeout(()=>qlShow(i,r),300); });
-      r.addEventListener('mouseleave',()=>{ clearTimeout(qlTimer); qlHide(); });
-    }
+  });
+  queueLayoutKey=queueLayoutSignature(items);
+  renderInspector();
+}
+function renderInspector(){
+  const panel=document.getElementById("inspectorPanel"), it=queue[selectedRowIndex];
+  if(!it){ panel.classList.remove("on"); return; }
+  panel.classList.add("on");
+  document.getElementById("inspectorTitle").textContent=it.name;
+  const p=profileFor(it), source=(it.width?`${it.width}×${it.height} · ${(it.codec||"unknown").toUpperCase()} · ${it.bits||8}-bit · ${it.fps||"?"} fps · ${fmtT(it.dur||0)}`:"Reading source information…");
+  const estimate=estBytes(it), output=outputPreviewFor(it);
+  document.getElementById("inspectorGrid").innerHTML=`
+    <div><span>Source</span><b>${escHtml(source)}</b></div>
+    <div><span>Output profile</span><b>${escHtml(formatLabel(p.mode))}${p.custom?' · Custom':''}</b></div>
+    <div><span>Deband amount</span><b>${escHtml(p.strength)}</b></div>
+    <div><span>Estimated size</span><b>${estimate?human(estimate):'Calculating…'}</b></div>
+    <div style="grid-column:1/-1"><span>Exact destination</span><b title="${escHtml(output.full)}">${escHtml(output.full)}</b></div>`;
+  const sample=document.getElementById("samplePreviewBtn"); sample.disabled=running;
+  sample.title=running?"Processed samples pause while an export is running to protect encoding speed":"Render a short processed sample";
+}
+function patchQueueProgress(items){
+  const q=document.getElementById("queue");
+  items.forEach((it,i)=>{
+    const row=q.querySelector(`.row[data-i="${i}"]`); if(!row) return;
+    const pct=row.querySelector(".pct"); if(pct) pct.textContent=it.pct||"";
   });
 }
-
-// ---- quick-look hover preview (Done rows): before/after thumbnail, no modal ----
-let qlTimer=null, qlCache={};
-function qlShow(i,anchorEl){
-  const it=queue[i]; if(!it || !it.out) return;
-  const key=it.out;
-  const popup=document.getElementById('qlPopup');
-  const rect=anchorEl.getBoundingClientRect();
-  popup.style.left=rect.left+"px";
-  popup.style.top=(rect.bottom+4)+"px";
-  popup.classList.add('show');
-  popup.dataset.forKey=key;
-  if(qlCache[key]){
-    document.getElementById('qlBefore').src=qlCache[key].before;
-    document.getElementById('qlAfter').src=qlCache[key].after;
-    return;
-  }
-  j('/api/compare',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({src:it.path,out:it.out,t:null})}).then(r=>{
-    if(r.error || popup.dataset.forKey!==key) return; // stale response, user moved on
-    const before=`${API}/api/compare-image?token=${r.token}&which=before`;
-    const after=`${API}/api/compare-image?token=${r.token}&which=after`;
-    qlCache[key]={before,after};
-    if(popup.dataset.forKey===key){
-      document.getElementById('qlBefore').src=before;
-      document.getElementById('qlAfter').src=after;
-    }
-  });
+function syncQueueFromServer(items){
+  const nextKey=queueLayoutSignature(items);
+  const layoutChanged=nextKey!==queueLayoutKey;
+  queue=items;
+  if(layoutChanged){
+    const q=document.getElementById("queue"), top=q.scrollTop;
+    renderQueue(queue); q.scrollTop=top;
+    saveQueueState();
+  } else patchQueueProgress(queue);
 }
-function qlHide(){ document.getElementById('qlPopup').classList.remove('show'); }
 
 // ---- drag-to-reorder ----
 let dragFromIdx=null;
@@ -653,7 +842,7 @@ document.getElementById("queue").addEventListener("drop",e=>{
   if(toIdx!==dragFromIdx){
     const [moved]=queue.splice(dragFromIdx,1);
     queue.splice(toIdx,0,moved);
-    renderQueue(queue);
+    saveQueueState(); renderQueue(queue);
   }
   dragFromIdx=null;
 });
@@ -661,25 +850,62 @@ document.getElementById("queue").addEventListener("drop",e=>{
 async function pick(kind){
   setStatus("Opening picker…");
   const items = await j("/api/"+(kind==="files"?"pick-files":"pick-folder"),{method:"POST"});
-  let added=0;
-  items.forEach(it=>{ if(!queue.some(q=>q.path===it.path)){ queue.push({...it,status:"Queued",pct:""}); added++; }});
-  renderQueue(queue); refreshConvert();
-  setStatus(added?`${queue.length} file(s) queued.`:"Nothing added.");
+  if(!Array.isArray(items)){ setStatus("Couldn’t open the file picker: "+(items.error||"unknown error")); return; }
+  let added=0, addedItems=[];
+  items.forEach(it=>{ if(!queue.some(q=>q.path===it.path)){ const entry={...it,_qid:nextQueueId++,loading:true,status:"Queued",pct:""}; queue.push(entry); addedItems.push(entry); added++; }});
+  saveQueueState(); renderQueue(queue); refreshConvert();
+  setStatus(added?`${queue.length} file(s) queued. Reading video details in the background…`:"Nothing added.");
+  addedItems.forEach(probeQueueItem);
+}
+async function probeQueueItem(entry){
+  try{
+    const data=await j("/api/probe",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({path:entry.path})});
+    if(!data.path || !queue.includes(entry)) return;
+    Object.assign(entry,data,{loading:false}); saveQueueState(); renderQueue(queue); refreshConvert();
+  }catch(_){ if(queue.includes(entry)){ entry.loading=false; entry.info="Couldn’t read video details."; renderQueue(queue); } }
 }
 function removeSel(){
   const checks=[...document.querySelectorAll("#queue input:checked")].map(c=>+c.dataset.i);
-  queue=queue.filter((_,i)=>!checks.includes(i)); renderQueue(queue); refreshConvert(); updateBulkBar();
+  queue=queue.filter((_,i)=>!checks.includes(i)); saveQueueState(); renderQueue(queue); refreshConvert(); updateBulkBar();
+  setStatus(queue.length?`${queue.length} file(s) queued.`:"Queue is empty.");
+}
+function removeAt(i){
+  if(i<0 || i>=queue.length || running) return;
+  queue.splice(i,1); saveQueueState(); refreshConvert(); updateBulkBar();
+  if(selectedRowIndex===i) selectedRowIndex=null; else if(selectedRowIndex>i) selectedRowIndex--;
+  renderQueue(queue);
+  setStatus(queue.length?`${queue.length} file(s) queued.`:"Queue is empty.");
 }
 function clearSelection(){
   document.querySelectorAll("#queue input:checked").forEach(c=>c.checked=false); updateBulkBar();
 }
-function clearQueue(){ queue=[]; renderQueue(queue); refreshConvert(); setStatus("Queue cleared."); }
+function clearQueue(){ queue=[]; selectedRowIndex=null; localStorage.removeItem("tenbit.pendingQueue.v1"); renderQueue(queue); refreshConvert(); setStatus("Queue cleared."); }
+function selectedIndexes(){ return [...document.querySelectorAll("#queue input:checked")].map(c=>+c.dataset.i); }
+function resetSelectedProfiles(){
+  const ids=selectedIndexes(); if(!ids.length) return;
+  ids.forEach(i=>queue[i].override=null); saveQueueState(); renderQueue(queue); updateBulkBar(); setStatus(`${ids.length} video(s) reset to global defaults.`);
+}
+function copyFirstProfileToSelected(){
+  const ids=selectedIndexes(); if(ids.length<2) return;
+  const source=queue[ids[0]];
+  ids.slice(1).forEach(i=>queue[i].override=source.override?JSON.parse(JSON.stringify(source.override)):null);
+  saveQueueState(); renderQueue(queue); updateBulkBar(); setStatus(`Copied the first selected video's profile to ${ids.length-1} video(s).`);
+}
+function resetClipAt(i){ if(!queue[i]) return; queue[i].override=null; saveQueueState(); renderQueue(queue); refreshConvert(); setStatus("This video now uses global defaults."); }
+function duplicateAt(i){
+  const source=queue[i]; if(!source || running) return;
+  const base=SETTINGS.suffix||"_10bit"; let suffix=base+"_alt", n=2;
+  while(queue.some(q=>q.path===source.path && q.output_suffix===suffix)) suffix=base+"_alt_"+(n++);
+  const copy={...source,override:source.override?JSON.parse(JSON.stringify(source.override)):null,output_suffix:suffix,status:"Queued",pct:"",out:"",info:"",error:""};
+  queue.splice(i+1,0,copy); saveQueueState(); renderQueue(queue); refreshConvert(); setStatus("Alternate export added. Adjust its settings if needed.");
+}
 // Contextual bulk-remove bar: only visible while at least one row is checked.
 function updateBulkBar(){
   const n=document.querySelectorAll("#queue input:checked").length;
   const bar=document.getElementById("bulkBar");
   bar.style.display = n? "flex":"none";
   document.getElementById("bulkCount").textContent = n? `${n} selected`:"";
+  document.getElementById("copyProfileBtn").style.display=n>1?"inline-block":"none";
 }
 document.getElementById("queue").addEventListener("change",e=>{ if(e.target.matches('input[type=checkbox]')) updateBulkBar(); });
 function refreshConvert(){ document.getElementById("btnConvert").disabled = running || !queue.length; updateEstimate(); if(rate==="Custom") drawZones(); }
@@ -699,6 +925,49 @@ function ovwResolve(result){
 
 async function convert(){
   if(!queue.length) return;
+  await openPreflight(true);
+}
+async function openPreflight(fromConvert=false){
+  if(!queue.length){ setStatus("Add a video first."); return; }
+  document.getElementById("preflightBody").textContent="Checking output paths, collisions, and free space…";
+  document.getElementById("mPreflight").classList.add("on");
+  const r=await j("/api/preflight",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({items:queue,mode,strength,rate})});
+  if(r.error){ document.getElementById("preflightBody").textContent="Preflight failed: "+r.error; return; }
+  window.currentPreflight=r;
+  const collisions=r.collisions||[];
+  const onExists=r.on_exists||"skip";
+  const actionText={skip:"Skip existing files",overwrite:"Overwrite existing files",rename:"Keep both — add -2, -3, …"}[onExists];
+  const free=(r.disks||[]).map(d=>`${escHtml(d.folder)} · ${human(d.free)} free${d.needed?` · ~${human(d.needed)} estimated`:""}`).join("<br>")||"Could not read free space.";
+  const blocking=(r.blocking||[]).map(x=>`<div>• ${escHtml(x)}</div>`).join("");
+  const warnings=(r.warnings||[]).map(x=>`<div>• ${escHtml(x)}</div>`).join("");
+  const rows=(r.items||[]).map(it=>`<tr><td>${escHtml(it.name)}</td><td>${escHtml(it.format)}</td><td style="font-family:var(--mono);font-size:12px">${escHtml(it.out)}${it.renamed?` <span class="hint" style="margin:0">(renamed)</span>`:""}</td></tr>`).join("");
+  document.getElementById("preflightBody").innerHTML=`
+    <div class="row-inline" style="gap:10px;flex-wrap:wrap;margin-bottom:10px"><b>Existing outputs</b><select id="preflightOnExists" onchange="setPreflightCollisionAction(this.value)"><option value="skip" ${onExists==="skip"?"selected":""}>Skip</option><option value="overwrite" ${onExists==="overwrite"?"selected":""}>Overwrite</option><option value="rename" ${onExists==="rename"?"selected":""}>Keep both (add -2)</option></select><span class="hint" style="margin:0">${actionText}</span></div>
+    <div class="banner ${collisions.length?'banner-high':'banner-low'}">${collisions.length?`${collisions.length} existing output${collisions.length>1?'s':''} found. Exact resulting paths are shown below.`:'No output collisions found.'}</div>
+    ${blocking?`<div class="banner banner-high"><b>Fix before converting</b>${blocking}</div>`:""}
+    ${warnings?`<div class="banner banner-moderate"><b>Check before converting</b>${warnings}</div>`:""}
+    <div class="row-inline" style="gap:18px;flex-wrap:wrap;margin:10px 0"><b>Estimated total: ${human(r.total_estimate||0)}</b><span>${free}</span></div>
+    <table style="width:100%;border-collapse:collapse;font-size:13px"><tr style="text-align:left;color:var(--muted)"><th>File</th><th>Format</th><th>Exact export path</th></tr>${rows}</table>`;
+  document.getElementById("preflightConvertBtn").disabled=!r.ready;
+}
+async function setPreflightCollisionAction(value){
+  await saveOne({on_exists:value});
+  SETTINGS={...SETTINGS,on_exists:value};
+  await openPreflight();
+}
+async function startFromPreflight(){
+  if(!window.currentPreflight?.ready){ setStatus("Resolve the preflight issues before converting."); return; }
+  const cur=await j("/api/settings");
+  if(cur.on_exists==="overwrite"){
+    const chk=await j("/api/check-overwrites",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({items:queue,mode,strength,rate})});
+    if(chk.existing&&chk.existing.length){ const ok=await confirmOverwrite(chk.existing); if(!ok) return; }
+  }
+  closeModal("mPreflight");
+  await startConvert();
+}
+// legacy convert flow retained below for callers that still invoke it directly.
+async function legacyConvert(){
+  if(!queue.length) return;
   const cur=await j("/api/settings");
   if(cur.on_exists==="overwrite"){
     const chk=await j("/api/check-overwrites",{method:"POST",headers:{"Content-Type":"application/json"},
@@ -712,7 +981,7 @@ async function convert(){
 }
 async function startConvert(){
   const r=await j("/api/convert",{method:"POST",headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({items:queue,mode,strength,rate})});
+    body:JSON.stringify({items:queue,mode,strength,rate,engine:SETTINGS.engine||"ffmpeg-deband-v1"})});
   if(r.error){ setStatus("Error: "+r.error); return; }
   running=true; setControls(); poll();
 }
@@ -732,6 +1001,7 @@ function setControls(){
   document.getElementById("btnConvert").style.display = running? "none":"inline-block";
   document.getElementById("btnStopAfter").style.display = running? "inline-block":"none";
   document.getElementById("btnCancel").style.display = running? "inline-block":"none";
+  renderInspector();
 }
 // Named phase, not just a %: the server folds phase info into s.now.file as a
 // ' — <suffix>' tail (e.g. 'pass 1/2 (analyzing)', 'pass 2/2', 'HEVC preview').
@@ -747,16 +1017,39 @@ function phaseFromFile(fileStr){
   return {label, phase};
 }
 let currentPhase="Encoding";
+function updateRunningPreview(now){
+  const box=document.getElementById("runningPreview");
+  if(!SETTINGS.live_preview){ box.style.display="none"; previewKey=""; return; }
+  if(!running){ box.style.display="none"; previewKey=""; return; }
+  const fps=Number(now.fps)||0, speed=Number(String(now.speed||"").replace("x",""))||0;
+  if((fps&&fps<15)||(speed&&speed<0.65)){
+    box.style.display="none"; previewKey="paused";
+    return; // Export speed wins over a cosmetic live frame.
+  }
+  // A 480p source frame is fetched at most once every five seconds. It is
+  // intentionally light enough to stay out of the encoder's way.
+  const key=`${Math.floor((Number(now.sec)||0)/5)}`;
+  if(key===previewKey) return;
+  previewKey=key;
+  const img=document.getElementById("runningPreviewImage");
+  img.onload=()=>{ if(running) box.style.display="block"; };
+  // The first poll can land a moment before FFmpeg has opened the source.
+  // Clear the key so the next lightweight status poll retries instead of
+  // hiding the preview for the entire (short) encode.
+  img.onerror=()=>{ box.style.display="none"; previewKey=""; };
+  img.src=`${API}/api/running-preview?tick=${key}&${authQuery()}`;
+}
 async function poll(){
   const s=await j("/api/status");
   running=s.running;
   const parsed=phaseFromFile(s.now.file||"—");
   currentPhase=parsed.phase;
-  if(s.items && s.items.length){ queue=s.items; renderQueue(queue); }
+  if(s.items && s.items.length){ syncQueueFromServer(s.items); }
   document.getElementById("nowFile").innerHTML = running
     ? `<span class="phase-pill">${currentPhase}</span>${parsed.label}`
     : parsed.label;
   const n=s.now;
+  updateRunningPreview(n);
   document.getElementById("nowStats").textContent = running
     ? `${n.pct}%  •  frame ${n.frame||"?"}  •  ${n.fps||"?"} fps  •  ${n.speed||"?"}  •  ETA ${n.eta}`
     : "idle";
@@ -788,8 +1081,49 @@ async function showBatchSummary(){
   const banner=document.getElementById("batchSummaryBanner");
   banner.style.display="flex";
   banner.className="banner "+(r.failed? "banner-high":"banner-low");
+  document.getElementById("retryFailedBtn").style.display=r.failed?"inline-block":"none";
+  document.getElementById("revealAllBtn").style.display=r.done?"inline-block":"none";
+  lastReport=r;
+  const outputs=(r.items||[]).map(x=>x.output).filter(Boolean), folders=[...new Set(outputs.map(x=>x.replace(/\/[^/]+$/,"")||x))];
+  document.getElementById("completionStats").textContent=`${r.done||0} completed · ${r.failed||0} failed · ${r.total_out_size||"—"} written`;
+  document.getElementById("completionPath").textContent=folders.length===1?folders[0]:(folders.length?`${folders.length} output folders · see report for exact paths`:"No output was written.");
+  document.getElementById("completionRetry").style.display=r.failed?"inline-block":"none";
+  document.getElementById("completionPanel").classList.add("on");
+  ["profileChooser","exportTarget","advancedPanel"].forEach(id=>document.getElementById(id).style.display="none");
+  document.getElementById("inspectorPanel").classList.remove("on");
+}
+async function revealAllExports(){ await j("/api/reveal-all",{method:"POST"}); }
+async function copyLastReport(){
+  const r=lastReport||await j("/api/report");
+  const lines=[`10-bit Converter report — ${r.time||""}`,`${r.done||0} completed, ${r.failed||0} failed, ${r.total_out_size||"—"} written`,""];
+  (r.items||[]).forEach(x=>lines.push(`${x.status||x.result||"Result"}: ${x.source||""}${x.output?`\n  → ${x.output}`:""}${x.error?`\n  ${x.error}`:""}`));
+  await navigator.clipboard.writeText(lines.join("\n")); setStatus("Report copied.");
+}
+function startAnotherBatch(){
+  queue=[]; selectedRowIndex=null; lastReport=null; localStorage.removeItem("tenbit.pendingQueue.v1");
+  document.getElementById("completionPanel").classList.remove("on");
+  document.getElementById("batchSummaryBanner").style.display="none";
+  document.getElementById("profileChooser").style.display="grid"; document.getElementById("exportTarget").style.display="flex";
+  syncAdvancedVisibility(); renderQueue(queue); refreshConvert(); setStatus("Add files or a folder to begin.");
+}
+async function retryFailed(){
+  const failed=queue.filter(it=>it.status==="Failed");
+  if(!failed.length) return;
+  failed.forEach(it=>{it.status="Queued";it.pct="";it.error="";});
+  queue=failed; saveQueueState(); renderQueue(queue); refreshConvert();
+  document.getElementById("batchSummaryBanner").style.display="none";
+  document.getElementById("completionPanel").classList.remove("on");
+  document.getElementById("profileChooser").style.display="grid"; document.getElementById("exportTarget").style.display="flex";
+  syncAdvancedVisibility(); await openPreflight(true);
 }
 
+*/
+</script>
+<script src="ui/conversion.js"></script>
+<script src="ui/queue.js"></script>
+<script src="ui/settings.js"></script>
+<script>
+/* Moved to ui/settings.js.
 // ---- settings ----
 async function openSettings(){
   const s=await j("/api/settings");
@@ -797,36 +1131,84 @@ async function openSettings(){
   if(!P.options.length){["ultrafast","superfast","veryfast","faster","fast","medium","slow","slower","veryslow"]
     .forEach(v=>P.add(new Option(v,v)));}
   st_dest_mode.value=s.dest_mode; st_dest_dir.value=s.dest_dir; st_suffix.value=s.suffix;
-  st_on_exists.value=s.on_exists; st_audio.value=s.audio||"copy"; st_dual_export.value=String(s.dual_export);
+  st_on_exists.value=s.on_exists; st_audio.value=s.audio||"copy"; st_dual_export.value=String(s.dual_export); st_live_preview.value=String(!!s.live_preview);
+  engineSelect.value=s.engine||"ffmpeg-deband-v1";
   st_crf.value=s.crf; st_preset.value=s.preset;
   st_deband_range.value=s.deband_range; st_deband_blur.value=String(s.deband_blur);
-  st_dither.value=s.dither; st_thr_custom.value=s.thr_custom;
-  st_target_mbps.value=s.target_mbps; st_deflicker.value=String(s.deflicker);
+  st_dither.value=s.dither; st_deflicker.value=String(s.deflicker);
   st_max_quality.value=String(s.max_quality);
   st_denoise.value=s.denoise||"off"; st_two_pass.value=String(s.two_pass);
   syncSlv(); syncZones();
+  syncFormatUI();
+  syncAdvancedVisibility();
   document.getElementById("mSettings").classList.add("on");
 }
 async function pickDest(){
-  const items=await j("/api/pick-folder",{method:"POST"});
-  // pick-folder returns files; derive the folder from the first, else ask again
-  if(items.length){ st_dest_dir.value=items[0].path.replace(/\/[^/]*$/,''); st_dest_mode.value="custom"; }
+  const r=await j("/api/pick-folder-path",{method:"POST"});
+  if(r.folder){ st_dest_dir.value=r.folder; st_dest_mode.value="custom"; }
 }
 async function saveSettings(){
   const body={dest_mode:st_dest_mode.value,dest_dir:st_dest_dir.value.trim(),
     suffix:st_suffix.value.trim()||"_10bit",on_exists:st_on_exists.value,audio:st_audio.value,
-    dual_export:st_dual_export.value==="true",
+    dual_export:st_dual_export.value==="true",live_preview:st_live_preview.value==="true",
+    engine:engineSelect.value,
     crf:+st_crf.value,preset:st_preset.value,deband_range:+st_deband_range.value,
     deband_blur:st_deband_blur.value==="true",dither:+st_dither.value,
-    thr_custom:st_thr_custom.value.trim()||"0.03",
-    target_mbps:+st_target_mbps.value||12,deflicker:st_deflicker.value==="true",
+    thr_custom:SETTINGS.thr_custom||"0.03",
+    target_mbps:+(SETTINGS.target_mbps??12),deflicker:st_deflicker.value==="true",
     max_quality:st_max_quality.value==="true",denoise:st_denoise.value,two_pass:st_two_pass.value==="true"};
   if(body.dest_mode==="custom" && !body.dest_dir){ alert("Choose an output folder, or switch back to “Next to each source”."); return; }
   await j("/api/settings",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
-  SETTINGS=body; updateEstimate(); updateCustomRate();
+  SETTINGS=body; updateExportTarget(); updateEstimate(); updateCustomRate(); updateCustomDeband();
   closeModal("mSettings"); setStatus("Settings saved.");
 }
-function closeModal(id){ document.getElementById(id).classList.remove("on"); }
+
+// Per-video export choices intentionally sit above the global Settings sheet:
+// global controls remain predictable defaults, while a queue item can opt in
+// to a different codec, deband strength, and rate target.
+function syncClipSettings(){
+  const custom=clipUseDefaults.value==="false";
+  document.querySelectorAll("#clipOverrideFields select,#clipOverrideFields input").forEach(el=>el.disabled=!custom);
+  const prores=clipMode.value.startsWith("ProRes");
+  clipRate.disabled=!custom||prores;
+  clipTarget.disabled=!custom||prores||clipRate.value!=="Custom";
+  clipRateLabel.style.opacity=prores?".5":"1";
+  clipTargetLabel.style.opacity=(prores||clipRate.value!=="Custom")?".5":"1";
+  clipTargetWrap.style.opacity=(prores||clipRate.value!=="Custom")?".5":"1";
+  clipProResNote.style.display=prores?"block":"none";
+}
+function openClipSettings(i){
+  const it=queue[i]; if(!it || running) return;
+  clipSettingsIndex=i;
+  const p=profileFor(it);
+  clipSettingsName.textContent=it.name;
+  clipUseDefaults.value=it.override?"false":"true";
+  clipMode.value=p.mode; clipStrength.value=p.strength; clipRate.value=p.rate;
+  clipTarget.value=p.target_mbps; clipTargetValue.textContent=(+p.target_mbps).toFixed(1)+" Mbps";
+  syncClipSettings();
+  document.getElementById("mClipSettings").classList.add("on");
+}
+function resetClipSettings(){
+  if(clipSettingsIndex==null) return;
+  queue[clipSettingsIndex].override=null;
+  saveQueueState(); renderQueue(queue); refreshConvert();
+  closeModal("mClipSettings");
+  setStatus("This video now uses the global defaults.");
+}
+function saveClipSettings(){
+  if(clipSettingsIndex==null) return;
+  const it=queue[clipSettingsIndex];
+  if(clipUseDefaults.value==="true"){
+    it.override=null;
+    setStatus("This video uses the global defaults.");
+  } else {
+    it.override={mode:clipMode.value,strength:clipStrength.value,
+      rate:clipMode.value.startsWith("ProRes")?"Quality (CRF)":clipRate.value,
+      target_mbps:+clipTarget.value||12};
+    setStatus(`Custom settings saved for ${it.name}.`);
+  }
+  saveQueueState(); renderQueue(queue); refreshConvert(); closeModal("mClipSettings");
+}
 
 // ---- batch report ----
 async function openReport(){
@@ -834,25 +1216,55 @@ async function openReport(){
   const body=document.getElementById("reportBody");
   if(!r || !r.time){ body.textContent="No conversions run yet."; document.getElementById("mReport").classList.add("on"); return; }
   const rows=(r.items||[]).map(it=>`<tr>
-      <td>${it.name}</td><td class="s-${it.status}">${it.status}</td>
-      <td>${it.in_size||"—"} → ${it.out_size||"—"}</td>
-      <td style="font-size:12px;color:var(--muted)">${it.info||""}</td>
+      <td>${escHtml(it.name)}</td><td class="s-${escHtml(it.status)}">${escHtml(it.status)}</td>
+      <td>${escHtml(it.in_size||"—")} → ${escHtml(it.out_size||"—")}</td>
+      <td style="font-size:12px;color:var(--muted)">${escHtml(it.profile||"")}${it.profile&&it.info?" · ":""}${escHtml(it.info||"")}<br><span style="font-family:var(--mono);font-size:11px">${escHtml(it.output||"—")}</span></td>
     </tr>`).join("");
   body.innerHTML=`
     <div class="row-inline" style="margin-bottom:8px;flex-wrap:wrap;gap:16px">
-      <div><b>${r.time}</b></div>
+      <div><b>${escHtml(r.time)}</b></div>
       <div>${r.done} done${r.skipped?`, ${r.skipped} skipped`:""}${r.failed?`, ${r.failed} failed`:""}${r.cancelled?", cancelled":""}</div>
-      <div>${r.total_in_size||"—"} → ${r.total_out_size||"—"}</div>
+      <div>${escHtml(r.total_in_size||"—")} → ${escHtml(r.total_out_size||"—")}</div>
       <div>${r.elapsed_sec}s</div>
     </div>
     <div class="hint" style="margin-bottom:8px">${r.mode} · ${r.strength} deband · ${r.rate}</div>
     <table style="width:100%;border-collapse:collapse;font-size:13px">
-      <tr style="text-align:left;color:var(--muted)"><th>File</th><th>Status</th><th>Size</th><th>Detail</th></tr>
+      <tr style="text-align:left;color:var(--muted)"><th>File</th><th>Status</th><th>Size</th><th>Detail / exact output</th></tr>
       ${rows}
     </table>`;
   document.getElementById("mReport").classList.add("on");
 }
 
+let historyRecords=[];
+async function copyPath(text){
+  try{ await navigator.clipboard.writeText(text); setStatus("Path copied."); }
+  catch(_){ const el=document.createElement("textarea"); el.value=text; document.body.appendChild(el); el.select(); document.execCommand("copy"); el.remove(); setStatus("Path copied."); }
+}
+async function openHistory(){
+  const body=document.getElementById("historyBody"); body.textContent="Loading history…";
+  document.getElementById("mHistory").classList.add("on");
+  const r=await j("/api/history"); historyRecords=r.reports||[];
+  if(!historyRecords.length){ body.textContent="No completed conversions yet."; return; }
+  body.innerHTML=historyRecords.map((report,ri)=>{
+    const rows=(report.items||[]).map((it,ii)=>`<tr><td>${escHtml(it.name||"")}</td><td class="s-${escHtml(it.status||"")}">${escHtml(it.status||"")}</td><td style="font-family:var(--mono);font-size:11px;word-break:break-all">${escHtml(it.output||"—")}</td><td><button class="mini" onclick="copyPath(historyRecords[${ri}].items[${ii}].output)">Copy path</button>${it.output?` <button class="mini" onclick="revealHistory(${ri},${ii})">Reveal</button>`:""}${it.source?` <button class="mini" onclick="retryHistory(${ri},${ii})">Retry</button>`:""}${it.error?` <button class="mini" onclick="showMsg('Conversion failed',historyRecords[${ri}].items[${ii}].error+'\\n\\n'+(historyRecords[${ri}].items[${ii}].recovery||''))">Why it failed</button>`:""}${it.log_path?` <button class="mini" onclick="revealFailureLog(historyRecords[${ri}].items[${ii}].log_path)">Reveal log</button>`:""}</td></tr>`).join("");
+    return `<section style="border-top:1px solid var(--line);padding:12px 0"><div class="row-inline" style="justify-content:space-between;gap:10px;flex-wrap:wrap"><b>${escHtml(report.time||"Earlier conversion")}</b><span class="hint" style="margin:0">${escHtml(report.mode||"")} · ${escHtml(report.strength||"")} deband · ${escHtml(report.rate||"")}</span></div><table style="width:100%;border-collapse:collapse;font-size:12px;margin-top:8px"><tr style="text-align:left;color:var(--muted)"><th>File</th><th>Result</th><th>Output</th><th></th></tr>${rows}</table></section>`;
+  }).join("");
+}
+async function revealHistory(reportIndex,itemIndex){
+  const path=historyRecords[reportIndex]?.items?.[itemIndex]?.output; if(!path) return;
+  await j("/api/reveal",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({path})});
+}
+async function retryHistory(reportIndex,itemIndex){
+  const item=historyRecords[reportIndex]?.items?.[itemIndex]; if(!item?.source) return;
+  const r=await j("/api/restore-queue",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({items:[{path:item.source,override:item.override||null,output_suffix:item.output_suffix||""}]})});
+  const restored=r.items?.[0]; if(!restored){ setStatus("The original source file is no longer available."); return; }
+  if(!queue.some(q=>q.path===restored.path && (q.output_suffix||"")===(restored.output_suffix||""))) queue.push({...restored,status:"Queued",pct:""});
+  saveQueueState(); renderQueue(queue); refreshConvert(); closeModal("mHistory"); setStatus("Retry added to the queue. Confirm the output plan before converting."); openPreflight();
+}
+async function revealFailureLog(path){ if(path) await j("/api/reveal-log",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({path})}); }
+
+*/
+/* Moved to ui/watch.js, ui/preview.js, and ui/queue.js.
 // ---- watch folder ----
 let watchPoll=null;
 function toggleWatchPanel(){
@@ -901,24 +1313,82 @@ j("/api/watch").then(w=>{ if(w.enabled) refreshWatchStatus(); });
 // ---- banding meter ----
 async function checkBanding(i){
   let target;
+  let targetIndex=i;
   if(i!=null) target=queue[i];
   else { const sel=[...document.querySelectorAll("#queue input:checked")].map(c=>+c.dataset.i);
-    target = sel.length? queue[sel[0]] : queue[0]; }
+    targetIndex=sel.length?sel[0]:0; target = queue[targetIndex]; }
   const banner=document.getElementById("bandingBanner");
   if(!target){ setStatus("Add (or tick) a file first, then Check banding."); return; }
   banner.style.display="block"; banner.className="banner banner-moderate";
   banner.textContent=`Analyzing ${target.name} for banding…`;
   const r=await j("/api/banding-meter",{method:"POST",headers:{"Content-Type":"application/json"},
     body:JSON.stringify({path:target.path})});
+  if(r.error){ banner.className="banner banner-high"; banner.textContent="Analysis failed: "+r.error; return; }
   if(r.band==="unknown"){ banner.textContent=r.message; return; }
   banner.className="banner banner-"+r.band;
   const label={low:"Low",moderate:"Moderate",high:"High"}[r.band]||r.band;
-  banner.innerHTML=`<b>${label} banding estimate</b> (${r.score}, ${r.samples} sample frame${r.samples>1?'s':''}) — ${r.message} `
-    +`<span style="opacity:.75">This is a heuristic, not a precise measurement — use Preview scopes or Compare to confirm visually.</span>`;
+  banner.innerHTML=`<b>${escHtml(label)} banding estimate</b> (${escHtml(r.score)}, ${escHtml(r.samples)} sampled frame${r.samples>1?'s':''}) — ${escHtml(r.message)} `
+    +`<span style="opacity:.75">Worst sample: ${fmtT(r.worst_time||0)}. </span><button class="mini" onclick="applyRecommendedStrength(${targetIndex},'${escHtml(r.recommended_strength||'Medium')}')">Use ${escHtml(r.recommended_strength||'Medium')} deband</button>`;
+}
+function applyRecommendedStrength(i, strengthValue){
+  const it=queue[i]; if(!it) return;
+  const p=profileFor(it);
+  it.override={mode:p.mode,strength:strengthValue,rate:p.rate,target_mbps:p.target_mbps};
+  saveQueueState(); renderQueue(queue); refreshConvert();
+  setStatus(`Applied ${strengthValue} deband to ${it.name}.`);
+}
+async function analyzeQueue(){
+  if(!queue.length){ setStatus("Add videos before analyzing the queue."); return; }
+  const targets=queue.filter(it=>!it.loading&&!it.out);
+  if(!targets.length){ setStatus("Video details are still loading."); return; }
+  setStatus(`Analyzing ${targets.length} video(s)…`);
+  let completed=0;
+  for(const it of targets){
+    const r=await j("/api/banding-meter",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({path:it.path})});
+    if(!r.error) it.smart=r;
+    completed++; setStatus(`Analyzed ${completed} of ${targets.length} video(s)…`);
+  }
+  saveQueueState(); renderQueue(queue);
+  const recommendations=targets.filter(it=>it.smart?.recommended_strength);
+  setStatus(`Analysis complete. ${recommendations.length} recommendation${recommendations.length===1?'':'s'} ready.`);
+}
+function applySmartQueue(){
+  let count=0;
+  queue.forEach(it=>{ if(it.smart?.recommended_strength){ applyRecommendedStrength(queue.indexOf(it),it.smart.recommended_strength); count++; } });
+  if(count) setStatus(`Applied experimental gradient recommendations to ${count} video(s).`);
 }
 
 // ---- scopes ----
-let scopesTarget=null;
+const SCOPE_TYPES={
+  waveform:{label:"Luma waveform",hint:"Brightness across the frame in IRE. Look for stepping/terraces in smooth gradients."},
+  parade:{label:"RGB parade",hint:"Red, green, and blue levels side by side. Useful for white balance and channel clipping."},
+  vectorscope:{label:"Vectorscope",hint:"Chroma distribution in Rec.709 space. Useful for saturation and colour casts."},
+  histogram:{label:"RGB histogram",hint:"Log-scaled channel distribution. Gaps and repeated spikes can reveal banding."},
+};
+let scopesTarget=null, scopeType="waveform", scopeRender=null;
+function setScopeType(type){
+  if(!SCOPE_TYPES[type]) return;
+  scopeType=type;
+  document.querySelectorAll("#scopeType [data-scope]").forEach(b=>b.classList.toggle("on",b.dataset.scope===type));
+  if(scopeRender) showScopePair();
+}
+function showScopePair(){
+  const state=scopeRender; if(!state) return;
+  const spec=SCOPE_TYPES[scopeType], errs=state.errors||{};
+  const cell=prefix=>{
+    const key=`${prefix}_${scopeType}`;
+    if(errs[key]) return `<div class="hint" style="padding:18px;color:var(--danger)">Couldn't render this view: ${escHtml((errs[key]||"").slice(0,180))}</div>`;
+    const src=`${API}/api/scope?token=${encodeURIComponent(state.token)}&which=${key}&_=${state.bust}&${authQuery()}`;
+    return `<img src="${src}" alt="${escHtml(spec.label)}" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'hint',textContent:'Image failed to load.'}))">`;
+  };
+  const vector=scopeType==="vectorscope"?" vector":"";
+  document.getElementById("scopesBody").innerHTML=`
+    <div class="scope-pair">
+      <figure class="scope-pane${vector}"><figcaption>Source <span>8-bit input</span></figcaption>${cell("src")}</figure>
+      <figure class="scope-pane${vector}"><figcaption style="color:var(--ok)">Processing preview <span>deband + dither · ${escHtml(state.strength)}</span></figcaption>${cell("aft")}</figure>
+    </div>
+    <div class="hint"><b>${escHtml(spec.label)}:</b> ${escHtml(spec.hint)}</div>`;
+}
 async function openScopes(i){
   let target;
   if(i!=null) target=queue[i];
@@ -926,6 +1396,8 @@ async function openScopes(i){
     target = sel.length? queue[sel[0]] : queue[0]; }
   if(!target){ setStatus("Add (or tick) a file first, then Preview scopes."); return; }
   scopesTarget=target;
+  scopeRender=null;
+  setScopeType(scopeType);
   document.getElementById("scopesTitle").textContent="Scopes — "+target.name;
   document.getElementById("scopesBody").innerHTML="Rendering scopes…";
   document.getElementById("scopesFilm").innerHTML="";
@@ -938,7 +1410,7 @@ async function openScopes(i){
   if(fs.token){
     const bust=Date.now();
     document.getElementById("scopesFilm").innerHTML = fs.times.map((t,i)=>
-      `<img data-t="${t}" src="${API}/api/filmstrip-image?token=${fs.token}&which=f${i}&_=${bust}" title="${fmtT(t)}">`
+      `<img data-t="${t}" src="${API}/api/filmstrip-image?token=${encodeURIComponent(fs.token)}&which=f${i}&_=${bust}&${authQuery()}" title="${fmtT(t)}">`
     ).join("");
   }
 }
@@ -950,27 +1422,12 @@ document.getElementById("scopesFilm").addEventListener("click",e=>{
 });
 async function renderScopesAt(t){
   const target=scopesTarget; if(!target) return;
+  const activeStrength=profileFor(target).strength;
   const r=await j("/api/scopes",{method:"POST",headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({path:target.path,strength,t})});
+    body:JSON.stringify({path:target.path,strength:activeStrength,t})});
   if(r.error){ document.getElementById("scopesBody").textContent="Error: "+r.error; return; }
-  const bust=Date.now();
-  const url=w=>`${API}/api/scope?token=${r.token}&which=${w}&_=${bust}`;
-  const errs=r.errors||{};
-  const cell=w=>errs[w]
-    ? `<div class="hint" style="color:var(--danger)">Couldn't render this view: ${(errs[w]||"").slice(0,160)}</div>`
-    : `<img src="${url(w)}" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'hint',textContent:'Image failed to load.'}))">`;
-  document.getElementById("scopesBody").innerHTML=`
-    <div class="scopes">
-      <div><h3>Source (8-bit)</h3>${cell('src_thumb')}
-        <div class="hint" style="margin:4px 0 2px">Histogram</div>${cell('src_hist')}
-        <div class="hint" style="margin:4px 0 2px">Waveform (luminance vs. position)</div>${cell('src_wave')}</div>
-      <div><h3 style="color:var(--ok)">After (deband + dither · ${strength})</h3>${cell('aft_thumb')}
-        <div class="hint" style="margin:4px 0 2px">Histogram</div>${cell('aft_hist')}
-        <div class="hint" style="margin:4px 0 2px">Waveform (luminance vs. position)</div>${cell('aft_wave')}</div>
-    </div>
-    <div class="hint">Histogram: banding shows as a comb (spikes with gaps) that fills in after
-      debanding. Waveform: banding shows as visible steps/terraces in the line that smooth out
-      after debanding. Click a filmstrip frame above to jump to a specific moment.</div>`;
+  scopeRender={...r,strength:activeStrength,bust:Date.now()};
+  showScopePair();
 }
 
 // ---- A/B compare ----
@@ -987,9 +1444,9 @@ async function cmpRender(t){
   if(r.error){ document.getElementById("cmpTitle").textContent="Compare — "+r.error; return; }
   cmpDur=r.duration||0; cmpLastT=r.t;
   const bust=Date.now();
-  cmpAfter.src=`/api/compare-image?token=${r.token}&which=after&_=${bust}`;
-  cmpBefore.src=`/api/compare-image?token=${r.token}&which=before&_=${bust}`;
-  document.getElementById("cmpDiff").src=`/api/compare-image?token=${r.token}&which=diff&_=${bust}`;
+  cmpAfter.src=`/api/compare-image?token=${encodeURIComponent(r.token)}&which=after&_=${bust}&${authQuery()}`;
+  cmpBefore.src=`/api/compare-image?token=${encodeURIComponent(r.token)}&which=before&_=${bust}&${authQuery()}`;
+  document.getElementById("cmpDiff").src=`/api/compare-image?token=${encodeURIComponent(r.token)}&which=diff&_=${bust}&${authQuery()}`;
   cmpTimeLbl.textContent=cmpDur?`${fmtT(r.t)} / ${fmtT(cmpDur)}`:fmtT(r.t);
   if(cmpDur) cmpTime.value=Math.round(r.t/cmpDur*100);
 }
@@ -1039,15 +1496,64 @@ cmpWrap.addEventListener("dblclick",e=>{
 
 // ---- drag & drop ----
 const qEl=document.getElementById("queue");
+let playerItem=null;
+const pendingDropPaths=new Set();
+function openPlayer(i){
+  const it=queue[i]; if(!it) return;
+  playerItem=it; document.getElementById("playerTitle").textContent="Preview — "+it.name;
+  document.getElementById("playerOutputBtn").style.display=it.out?"inline-block":"none";
+  document.getElementById("mPlayer").classList.add("on"); setPlayerSource("source");
+}
+async function previewSelectedSample(){
+  const it=queue[selectedRowIndex]; if(!it) return;
+  setStatus(`Rendering a short processed sample for ${it.name}…`);
+  const p=profileFor(it), r=await j("/api/processed-sample",{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({path:it.path,strength:p.strength,t:it.smart?.worst_time??null})});
+  if(r.error){ setStatus("Sample preview failed: "+r.error); return; }
+  playerItem={...it,out:r.path}; document.getElementById("playerTitle").textContent="Processed sample — "+it.name;
+  document.getElementById("playerOutputBtn").style.display="inline-block";
+  document.getElementById("mPlayer").classList.add("on"); setPlayerSource("output"); setStatus("Processed sample ready.");
+}
+function setPlayerSource(which){
+  const it=playerItem; if(!it || (which==="output"&&!it.out)) return;
+  document.querySelectorAll("#playerChoice button").forEach(b=>b.classList.toggle("on",b.dataset.player===which));
+  const path=which==="output"?it.out:it.path;
+  const video=document.getElementById("previewVideo"); video.pause();
+  video.src=`${API}/api/media?path=${encodeURIComponent(path)}&${authQuery()}`; video.load();
+}
+function closePlayer(){ const video=document.getElementById("previewVideo"); video.pause(); video.removeAttribute("src"); video.load(); closeModal("mPlayer"); }
+// Called by the PyWebView DOM bridge. Native WKWebView supplies absolute paths
+// here, so large clips never need to be copied into the browser-upload intake.
+window.addNativeDroppedFiles = async paths => {
+  if(running || !Array.isArray(paths) || !paths.length) return;
+  let added=0, addedItems=[];
+  for(const path of paths){
+    if(!path || pendingDropPaths.has(path) || queue.some(q=>q.path===path)) continue;
+    pendingDropPaths.add(path);
+    try{
+      const it=await j("/api/add-native-path",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({path})});
+      if(it.path && !queue.some(q=>q.path===it.path)){ const entry={...it,_qid:nextQueueId++,loading:true,status:"Queued",pct:""}; queue.push(entry); addedItems.push(entry); added++; }
+    }catch(_){ // keep processing the rest of a multi-file drop
+    finally{ pendingDropPaths.delete(path); }
+  }
+  if(added){ saveQueueState(); renderQueue(queue); refreshConvert(); setStatus(`${queue.length} file(s) queued. Reading video details in the background…`); addedItems.forEach(probeQueueItem); }
+};
 qEl.addEventListener("click",e=>{
+  const am=e.target.closest("[data-row-actions]"); if(am){ const menu=document.getElementById("rowActions"+am.dataset.rowActions); document.querySelectorAll(".row-action-menu").forEach(m=>{if(m!==menu)m.classList.remove("open")}); menu?.classList.toggle("open"); return; }
+  const pl=e.target.closest("[data-play]"); if(pl){ openPlayer(+pl.dataset.play); return; }
   const c=e.target.closest("[data-cmp]"); if(c){ openCompare(+c.dataset.cmp); return; }
-  const er=e.target.closest("[data-err]"); if(er){ showMsg("Conversion failed — "+(queue[+er.dataset.err]?.name||""), queue[+er.dataset.err]?.error||"(no details)"); return; }
+  const er=e.target.closest("[data-err]"); if(er){ const it=queue[+er.dataset.err]||{}; showMsg("Conversion failed — "+(it.name||""), `${it.error||"(no details)"}\n\n${it.recovery||"Retry this file after correcting the issue."}`); return; }
+  const lg=e.target.closest("[data-log]"); if(lg){ const it=queue[+lg.dataset.log]; if(it?.log_path) fetch(API+"/api/reveal-log",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({path:it.log_path})}); return; }
+  const rm=e.target.closest("[data-remove]"); if(rm){ removeAt(+rm.dataset.remove); return; }
+  const cp=e.target.closest("[data-clip]"); if(cp){ openClipSettings(+cp.dataset.clip); return; }
+  const rs=e.target.closest("[data-resetclip]"); if(rs){ resetClipAt(+rs.dataset.resetclip); return; }
+  const du=e.target.closest("[data-duplicate]"); if(du){ duplicateAt(+du.dataset.duplicate); return; }
   const rv=e.target.closest("[data-rev]"); if(rv){ const it=queue[+rv.dataset.rev]; if(it?.out) fetch(API+"/api/reveal",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({path:it.out})}); return; }
   const sc=e.target.closest("[data-scopes]"); if(sc){ openScopes(+sc.dataset.scopes); return; }
   const bd=e.target.closest("[data-band]"); if(bd){ checkBanding(+bd.dataset.band); return; }
+  const row=e.target.closest(".row");
+  if(row && !e.target.closest("button,input,.row-action-menu")){ selectedRowIndex=+row.dataset.i; renderQueue(queue); }
 });
-function showMsg(title,text){ document.getElementById("msgTitle").textContent=title;
-  document.getElementById("msgBody").textContent=text; document.getElementById("mMsg").classList.add("on"); }
 // Only react to real OS file drags (Finder), never an internal row-reorder
 // drag — the drag-to-reorder handlers below manage the DOM's own drag data,
 // which has no 'Files' type on its dataTransfer.
@@ -1055,46 +1561,91 @@ const isFileDrag=e=>e.dataTransfer?.types?.includes("Files");
 qEl.addEventListener("dragover",e=>{ if(!isFileDrag(e)) return; e.preventDefault();qEl.classList.add("drop");});
 qEl.addEventListener("dragleave",e=>{ if(!qEl.contains(e.relatedTarget)) qEl.classList.remove("drop"); });
 qEl.addEventListener("drop",async e=>{
-  if(!isFileDrag(e)) return;
+  const droppedFiles=[...(e.dataTransfer?.files||[])];
+  if(!isFileDrag(e) && !droppedFiles.length && !NATIVE_SHELL) return;
   e.preventDefault(); qEl.classList.remove("drop");
   if(running) return;
-  const files=[...(e.dataTransfer?.files||[])].filter(f=>/\.(mp4|mov|mkv|avi|m4v|webm|mpg|mpeg|ts)$/i.test(f.name));
+  // The macOS PyWebView bridge supplies absolute Finder paths separately.
+  // Uploading this File object would copy it under /private/var and make a
+  // "next to each source" destination impossible to honor.
+  if(NATIVE_SHELL){ setStatus("Adding dropped video…"); return; }
+  // Native PyWebView drops expose pywebviewFullPath; browser drops expose a
+  // File object. Handle both paths here so a native handler cannot leave a
+  // visually active but non-functional drop zone.
+  const files=droppedFiles.filter(f=>/\.(mp4|mov|mkv|avi|m4v|webm|mpg|mpeg|ts)$/i.test(f.name));
   if(!files.length){ setStatus("Drop video files (mp4, mov, mkv…)."); return; }
-  let n=0;
+  let n=0, addedItems=[];
   for(const f of files){
-    setStatus(`Uploading ${f.name} (${n+1}/${files.length})…`);
+    const nativePath=f.pywebviewFullPath || f.path || "";
+    const dedupeKey=nativePath || `browser:${f.name}:${f.size}:${f.lastModified}`;
+    if(pendingDropPaths.has(dedupeKey) || (nativePath && queue.some(q=>q.path===nativePath))) continue;
+    pendingDropPaths.add(dedupeKey);
+    setStatus(`${nativePath ? "Adding" : "Uploading"} ${f.name} (${n+1}/${files.length})…`);
     try{
-      const it=await (await fetch(API+"/api/upload?name="+encodeURIComponent(f.name),{method:"POST",body:f})).json();
-      if(it.path && !queue.some(q=>q.path===it.path)){ queue.push({...it,status:"Queued",pct:""}); n++; }
+      const response = nativePath
+        ? await fetch(API+"/api/add-native-path",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({path:nativePath})})
+        : await fetch(API+"/api/upload?name="+encodeURIComponent(f.name),{method:"POST",body:f});
+      const it=await response.json();
+      if(it.path && !queue.some(q=>q.path===it.path)){ const entry={...it,_qid:nextQueueId++,loading:!it.width,status:"Queued",pct:""}; queue.push(entry); addedItems.push(entry); n++; }
     }catch(err){ setStatus("Upload failed: "+f.name); }
+    finally{ pendingDropPaths.delete(dedupeKey); }
   }
-  renderQueue(queue); refreshConvert();
-  setStatus(`${queue.length} file(s) queued. Dropped files convert into your Downloads folder.`);
+  saveQueueState(); renderQueue(queue); refreshConvert();
+  setStatus(`${queue.length} file(s) queued.`);
+  addedItems.filter(it=>it.loading).forEach(probeQueueItem);
+});
+qEl.addEventListener("dblclick",e=>{
+  if(running || e.target.closest(".row,.row-actions,button,input")) return;
+  pick("files");
 });
 
+*/
+</script>
+<script src="ui/preview.js"></script>
+<script src="ui/watch.js"></script>
+<script>
+/* Moved to ui/controls.js.
 // ---- estimates + bitrate guidance ----
 function human(b){const u=["B","KB","MB","GB","TB"];let i=0;while(b>=1024&&i<u.length-1){b/=1024;i++;}return (i>=2?b.toFixed(1):Math.round(b))+" "+u[i];}
 function estBytes(it){
   const dur=it.dur||0; if(!dur) return null;
-  if(mode.startsWith("ProRes")){ const fps=it.fps||30,w=it.width||1920,h=it.height||1080; return w*h*5.31*fps*dur/8; }
-  if(rate==="Match source") return (it.kbps||0)*1000/8*dur;
-  if(rate==="Custom") return ((SETTINGS.target_mbps||12)*1e6+192000)/8*dur;
-  return null; // CRF varies
+  const p=profileFor(it);
+  if(p.mode.startsWith("ProRes")){ const fps=it.fps||30,w=it.width||1920,h=it.height||1080; return w*h*5.31*fps*dur/8; }
+  const sourceBytes=it.size||((it.kbps||0)*1000/8*dur);
+  if(p.rate==="Match source") return sourceBytes||null;
+  if(p.rate==="Custom") return ((p.target_mbps||12)*1e6+192000)/8*dur;
+  // CRF varies with the image, but a source-size estimate is more useful
+  // than a misleading 0 B. HEVC usually lands smaller; 10-bit H.264 closer.
+  if(p.rate==="Quality (CRF)" && sourceBytes) return sourceBytes*(p.mode.startsWith("H.264")?1.05:.78);
+  return null;
 }
 function updateAdjustSummary(){
-  const fmt=mode.startsWith("ProRes")?"ProRes 4444":"HEVC";
-  const rt={"Match source":"Match source","Quality (CRF)":"Quality","Custom":"Custom bitrate"}[rate]||rate;
+  const fmt=formatLabel(mode);
+  const rt=mode.startsWith("ProRes") ? "Codec-managed" : ({"Match source":"Match source","Quality (CRF)":"Quality","Custom":"Custom bitrate"}[rate]||rate);
   document.getElementById("adjustSummary").textContent=`— ${fmt} · ${strength} deband · ${rt}`;
+}
+function syncFormatUI(){
+  const prores=mode.startsWith("ProRes");
+  document.getElementById("adjustRate").style.display=prores?"none":"block";
+  document.getElementById("proresRateNote").style.display=prores?"block":"none";
+  document.querySelectorAll(".hevc-only").forEach(el=>el.hidden=prores);
+  document.getElementById("proresSettingsNote").style.display=prores?"block":"none";
+  if(prores) document.getElementById("customRate").style.display="none";
+  updateAdjustSummary();
 }
 function updateEstimate(){
   updateAdjustSummary();
   const el=document.getElementById("estimate");
   if(!queue.length){ el.textContent=""; return; }
-  if(!mode.startsWith("ProRes") && rate==="Quality (CRF)"){ el.textContent=`Estimated output: varies with content (quality mode, CRF ${SETTINGS.crf??18})`; return; }
+  const qualityCount=queue.filter(it=>{const p=profileFor(it); return !p.mode.startsWith("ProRes")&&p.rate==="Quality (CRF)";}).length;
   let total=0,unknown=0;
+  if(queue.some(it=>it.loading)){ el.textContent="Estimating output — reading video details…"; return; }
   queue.forEach(it=>{const b=estBytes(it); if(b==null)unknown++; else total+=b;});
-  let s=`Estimated output: ~${human(total)} (${queue.length} file${queue.length>1?'s':''})`;
-  if(mode.startsWith("ProRes")) s+=" · ProRes estimate approximate";
+  const formats={}; queue.forEach(it=>{const f=formatLabel(profileFor(it).mode);formats[f]=(formats[f]||0)+1;});
+  if(!total){ el.textContent=`Estimating output — ${unknown||queue.length} file${(unknown||queue.length)>1?'s':''} still need readable duration or size metadata.`; return; }
+  let s=`Estimated output: ~${human(total)} (${queue.length} file${queue.length>1?'s':''}) · ${Object.entries(formats).map(([f,n])=>`${n} ${f}`).join(", ")}`;
+  if(queue.some(it=>profileFor(it).mode.startsWith("ProRes"))) s+=" · ProRes estimate approximate";
+  if(qualityCount) s+=` · ${qualityCount} quality-mode file${qualityCount>1?'s':''} varies with content`;
   if(unknown) s+=` · ${unknown} without duration info`;
   el.textContent=s;
 }
@@ -1111,11 +1662,36 @@ function drawZones(){
   } else { zone.style.background="var(--chip)"; verdict.textContent="Add files to see source-relative guidance."; }
 }
 function updateCustomRate(){
-  const show=rate==="Custom"; document.getElementById("customRate").style.display=show?"block":"none";
+  const show=!mode.startsWith("ProRes") && rate==="Custom"; document.getElementById("customRate").style.display=show?"block":"none";
   if(!show) return;
   const el=document.getElementById("crBitrate"); el.value=SETTINGS.target_mbps||12;
   document.getElementById("crVal").textContent=(+el.value).toFixed(1)+" Mbps"; drawZones();
 }
+function debandGuidance(v){
+  if(v<=0.012) return {color:"#c98a00",text:"Very gentle — may leave obvious banding behind."};
+  if(v<=0.030) return {color:"#1a7f37",text:"Balanced — start here for normal gradient banding."};
+  if(v<=0.050) return {color:"#c98a00",text:"Strong — inspect skin, fine texture, and edges before a batch."};
+  return {color:"#b42318",text:"Very strong — likely to soften texture or create an artificial look."};
+}
+function updateCustomDeband(){
+  const wrap=document.getElementById("customDeband"), range=document.getElementById("customDebandRange"), number=document.getElementById("customDebandNumber");
+  const show=strength==="Custom";
+  wrap.style.display=show?"block":"none";
+  const value=Math.max(.005,Math.min(.08,Number(SETTINGS.thr_custom)||.03));
+  if(document.activeElement!==range) range.value=value.toFixed(3);
+  if(document.activeElement!==number) number.value=value.toFixed(3);
+  const g=debandGuidance(value), pct=(value-.005)/.075*100;
+  document.getElementById("customDebandZone").style.background=`linear-gradient(to right,#c98a00 0 9%,#1a7f37 9% 33%,#c98a00 33% 60%,#b42318 60% 100%)`;
+  const verdict=document.getElementById("customDebandVerdict");
+  verdict.textContent=`${value.toFixed(3)} · ${g.text}`; verdict.style.color=g.color;
+}
+function setCustomDeband(value){
+  const v=Math.max(.005,Math.min(.08,Number(value)||.03));
+  SETTINGS.thr_custom=v.toFixed(3); updateCustomDeband();
+  clearTimeout(crTimer); crTimer=setTimeout(()=>saveOne({thr_custom:SETTINGS.thr_custom}),250);
+}
+document.getElementById("customDebandRange").addEventListener("input",e=>setCustomDeband(e.target.value));
+document.getElementById("customDebandNumber").addEventListener("change",e=>setCustomDeband(e.target.value));
 let crTimer=null;
 document.getElementById("crBitrate").addEventListener("input",()=>{
   const v=+document.getElementById("crBitrate").value;
@@ -1126,7 +1702,7 @@ document.getElementById("crBitrate").addEventListener("input",()=>{
 async function saveOne(patch){ const cur=await j("/api/settings"); SETTINGS={...cur,...patch};
   await j("/api/settings",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(SETTINGS)}); }
 // settings sliders -> live labels
-const SLV=[["st_crf",v=>v],["st_dither",v=>v],["st_deband_range",v=>v+" px"],["st_target_mbps",v=>v+" Mbps"]];
+const SLV=[["st_crf",v=>v],["st_dither",v=>v],["st_deband_range",v=>v+" px"]];
 SLV.forEach(([id,f])=>{ const el=document.getElementById(id); if(el) el.addEventListener("input",()=>document.getElementById(id+"_v").textContent=f(el.value)); });
 function syncSlv(){ SLV.forEach(([id,f])=>{const el=document.getElementById(id),lab=document.getElementById(id+"_v"); if(el&&lab)lab.textContent=f(el.value);}); }
 
@@ -1170,11 +1746,12 @@ Object.keys(ZONES).forEach(id=>{
 });
 function syncZones(){ Object.keys(ZONES).forEach(renderZone); }
 // init
-j("/api/settings").then(s=>{SETTINGS=s; updateEstimate(); updateCustomRate();});
+j("/api/settings").then(s=>{SETTINGS=s; updateExportTarget(); syncFormatUI(); updateEstimate(); updateCustomRate(); updateCustomDeband();});
 loadCustomPresets();
-
-renderQueue(queue);
+restoreQueue();
 setControls();
+*/
 </script>
+<script src="ui/controls.js"></script>
 </body>
 </html>

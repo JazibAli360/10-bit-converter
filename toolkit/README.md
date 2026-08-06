@@ -1,12 +1,31 @@
 # 8-bit → 10-bit Video Conversion Toolkit
 
-## Quick start (easiest — just one file)
+## Quick start (recommended — standalone app)
+
+Open **`10-bit Converter.app`**. It contains its own Python runtime, native
+window framework, FFmpeg, and FFprobe; no Homebrew, Python, browser extension,
+or internet connection is required. The first public release will be a signed
+and notarized disk image. Until then, macOS may require **right-click → Open**
+once because development builds are unsigned.
+
+### Windows x64 release
+
+The Windows version uses the same local conversion pipeline and native desktop
+window. It is packaged as a shareable installer with its own Python runtime,
+PyWebView/Edge WebView2 shell, FFmpeg, and FFprobe — recipients do not install
+Python, Homebrew, or FFmpeg. Build and release instructions are in
+[`../.windows/README.md`](../.windows/README.md). Windows can also package the
+optional libplacebo/Vulkan engine, but it is exposed only after a real GPU
+capability check succeeds; the stable CPU engine remains available everywhere.
+
+## Development quick start (scripts)
 
 **Double-click `Start_Here.command`.**
 
 It checks what your Mac has, offers to install anything missing (Homebrew,
-ffmpeg, Python + Tk, optional drag-and-drop), and then opens the converter
-app. You just confirm the prompts.
+ffmpeg, Python), and then opens the converter. When PyWebView is installed it
+opens in a native macOS window; otherwise it safely falls back to the local
+browser app.
 
 > First run only: macOS blocks unsigned scripts, so if double-click does
 > nothing, **right-click `Start_Here.command` → Open → Open**. You do this
@@ -66,6 +85,10 @@ prompt level, not with a bit-depth conversion.
 - **Settings (GUI)** — output folder, filename suffix, skip-vs-overwrite,
   HEVC CRF + preset, deband range/blur, dither amount, and a custom deband
   threshold. Saved to disk so your choices persist between launches.
+- **Optional libplacebo engine** — Advanced can use the bundled deterministic
+  GPU deband path when Vulkan/MoltenVK initializes successfully. It is never
+  selected by default, never silently replaces Faithful 10-bit, and reports a
+  clear unavailable reason when the Mac cannot create a Vulkan device.
 
 ## Files in this toolkit
 
@@ -74,8 +97,9 @@ Double-click to install everything needed and launch the GUI. See Quick start
 above.
 
 ### `server.py` + `index.html`  (the app)
-The converter runs as a small **local web app** — no GUI toolkit, Python
-stdlib only. `Start_Here.command` starts it and opens your browser to
+The converter uses the same local web interface in both development and the
+native app. `Start_Here.command` starts it in a PyWebView native window when
+available, or opens the local browser fallback at
 `http://127.0.0.1:8766`. It has a **queue** (each row shows status + live %),
 **Format** (HEVC / ProRes 4444), **Deband** (Low/Medium/High/Custom), and
 **Bitrate** (Match source / Quality / Custom Mbps) controls, optional
@@ -94,10 +118,47 @@ your Downloads, or the folder set in Settings). Run directly with:
 ```bash
 python3 server.py
 ```
-> Why a browser instead of a native window? The macOS system Tk (used by
-> Python's Tkinter) is deprecated and renders blank on current macOS, so a
-> Tkinter GUI is unreliable. A local web app avoids that entirely and needs
-> no extra install.
+> The native shell uses macOS WKWebView rather than Tk. It keeps the proven
+> local interface and conversion engine while delivering a standard macOS
+> window, native file dialogs, and an arm64 app bundle.
+
+## Native app build (developer/release workflow)
+
+From the project root, create the isolated arm64 build environment once:
+
+```bash
+python3 -m venv .venv-native
+.venv-native/bin/python -m pip install -r toolkit/requirements-native.txt
+```
+
+Then build the app:
+
+```bash
+cd toolkit
+../.venv-native/bin/python setup_native.py py2app --arch arm64
+```
+
+The result is `toolkit/dist/10-bit Converter.app`. It is self-contained: it
+bundles Python, PyWebView, the interface, and the arm64 FFmpeg/FFprobe binaries
+and verifies those bundled conversion tools at launch. It never requires a
+user-installed Python or Homebrew FFmpeg. Run `./build_release.sh` from the
+project root to create a Finder-ready app zip. The build is an unsigned
+development app; use right-click → Open when Gatekeeper requires it. Public
+distribution still needs Developer ID signing and notarization.
+
+### Quality checks
+
+Before packaging a release, run the regression suite from `toolkit`:
+
+```bash
+python3 -X pycache_prefix=/private/tmp/tenbit-pycache -m unittest discover -s tests -v
+```
+
+The suite covers collision policy, atomic staging paths, stderr draining,
+preflight decisions, ProRes per-video output planning, 10-bit size estimates,
+history records, engine defaults, and the Advanced-controls UI contract. Also
+perform the packaged-app checks in `IMPLEMENTATION_ROADMAP.md` on a clean Mac
+before public release.
 
 ### `8bit_to_10bit.command`
 Mac double-click / drag-and-drop tool. Drop **one or more files, or a folder**
