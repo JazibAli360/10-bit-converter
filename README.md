@@ -43,6 +43,13 @@ GitHub README files do not support inline MP4 playback, so the film has its own
 playable product page. You can also download the MP4 from the
 [current GitHub Release](https://github.com/JazibAli360/10-bit-converter/releases/latest).
 
+## Privacy and security
+
+**Your footage stays on your Mac.** The app processes the files you choose
+locally: no accounts, uploads, cloud rendering, or analytics. The interface
+communicates only with the local Python controller on `127.0.0.1`, which runs
+the bundled FFmpeg tools on your machine.
+
 ## What it does
 
 - Processes videos locally — no uploads, accounts, or cloud rendering.
@@ -77,6 +84,21 @@ This is a practical cleanup workflow, not a magic-detail model. Debanding and
 dither reduce harsh visible transitions; the result is then encoded as a
 10-bit master for the next stage of post.
 
+## App architecture
+
+```mermaid
+flowchart LR
+    UI["PyWebView app interface"] --> Controller["Python local controller\n127.0.0.1 only"]
+    Controller --> Engine{"Conversion engine"}
+    Engine --> CPU["FFmpeg CPU deband + dither"]
+    Engine --> GPU["Optional FFmpeg + libplacebo/Vulkan GPU"]
+    CPU --> Output["HEVC Main10 or ProRes 4444 master"]
+    GPU --> Output
+```
+
+The CPU engine is the default release path. The GPU engine is optional and is
+offered only after its local capability check passes.
+
 ## Known limits
 
 - It cannot invent colour values or fine detail that an 8-bit source never had.
@@ -84,6 +106,31 @@ dither reduce harsh visible transitions; the result is then encoded as a
   platform re-encoding.
 - The optional libplacebo/Vulkan GPU path is experimental and
   capability-checked. The faithful CPU engine is the default release path.
+
+## FAQ
+
+### Does this create real 10-bit video?
+
+Yes. It encodes a 10-bit HEVC Main10 or 10-bit 4:4:4 ProRes master. It does
+not reconstruct lost tonal information from an 8-bit original; it reduces
+visible banding and makes a cleaner master for subsequent post-production.
+
+### Why is my file huge?
+
+ProRes 4444 is a robust grading intermediate, not a compact delivery file. Use
+HEVC Main10 when size and sharing matter more than edit-friendly 4:4:4 output.
+
+### Why is it slow?
+
+Debanding, dithering, high-quality processing, two-pass delivery, and ProRes
+all cost time. Resolution, clip duration, storage speed, and available CPU/GPU
+performance affect export speed too.
+
+### Will it fix every clip?
+
+No. Severe compression, existing posterization, aggressive grades, and later
+platform re-encoding can still show banding. Test a short preview and choose
+the gentlest setting that solves the visible issue.
 
 ## Tech
 

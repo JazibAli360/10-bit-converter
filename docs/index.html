@@ -67,12 +67,24 @@
     .limit span { color:var(--muted); font-size:.9rem; }
     .stack { display:flex; flex-wrap:wrap; gap:9px; margin-top:24px; padding:0; list-style:none; }
     .stack li { padding:8px 12px; border:1px solid var(--line); border-radius:999px; color:#dcd6ee; font-size:.9rem; }
+    .privacy { margin-top:32px; padding:22px; border:1px solid rgba(167,139,250,.36); border-radius:16px; background:linear-gradient(110deg,rgba(93,59,209,.22),rgba(7,21,53,.6)); }
+    .privacy h2 { margin:0 0 8px; font-size:clamp(1.35rem,2.5vw,1.85rem); letter-spacing:-.035em; }
+    .privacy p { max-width:760px; margin:0; color:#ded8ee; }
+    .architecture { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-top:24px; }
+    .architecture-step { position:relative; min-height:124px; padding:19px; border:1px solid var(--line); border-radius:14px; background:#0c0a14; }
+    .architecture-step:not(:last-child)::after { position:absolute; top:50%; right:-20px; z-index:1; color:#cbbcff; content:"→"; font-size:1.6rem; transform:translateY(-50%); }
+    .architecture-step small { display:block; margin-bottom:10px; color:#cbbcff; font-weight:700; letter-spacing:.1em; text-transform:uppercase; }
+    .architecture-step b { display:block; margin-bottom:8px; }
+    .architecture-step span { color:var(--muted); font-size:.88rem; }
+    .faq details { padding:16px 0; border-bottom:1px solid var(--line); }
+    .faq summary { color:var(--ink); font-weight:700; }
+    .faq p { margin:10px 0 0; color:var(--muted); }
     .facts { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:1px; margin-top:54px; overflow:hidden; border:1px solid var(--line); border-radius:16px; background:var(--line); }
     .fact { padding:22px; background:#14111f; }
     .fact b { display:block; margin-bottom:5px; font-size:.86rem; }
     .fact span { color:var(--muted); font-size:.9rem; }
     footer { margin-top:44px; color:var(--muted); font-size:.9rem; }
-    @media (max-width:640px) { main { width:min(100% - 28px,1120px); padding-top:34px; } .facts, .bit-facts, .gradient-compare, .pipeline, .limits { grid-template-columns:1fr; } .film { border-radius:14px; } .brand-lockup { gap:14px; } .pipeline-step:not(:last-child)::after { top:auto; right:auto; bottom:-24px; left:50%; transform:translateX(-50%) rotate(90deg); } .export-table { font-size:.9rem; } .export-table th, .export-table td { padding:12px 8px; } }
+    @media (max-width:640px) { main { width:min(100% - 28px,1120px); padding-top:34px; } .facts, .bit-facts, .gradient-compare, .pipeline, .limits, .architecture { grid-template-columns:1fr; } .film { border-radius:14px; } .brand-lockup { gap:14px; } .pipeline-step:not(:last-child)::after, .architecture-step:not(:last-child)::after { top:auto; right:auto; bottom:-24px; left:50%; transform:translateX(-50%) rotate(90deg); } .export-table { font-size:.9rem; } .export-table th, .export-table td { padding:12px 8px; } }
   </style>
 </head>
 <body>
@@ -106,6 +118,11 @@
       <a class="button" href="https://youtu.be/HatF_mN1QC0">Watch on YouTube</a>
       <a class="button" href="https://github.com/JazibAli360/10-bit-converter">View source on GitHub</a>
     </div>
+
+    <section class="privacy" aria-labelledby="privacy-heading">
+      <h2 id="privacy-heading">Your footage stays on your Mac.</h2>
+      <p>10-bit Converter processes selected files locally. There are no accounts, uploads, cloud rendering, or analytics. Its interface communicates only with a local Python controller on <code>127.0.0.1</code>, which runs the bundled FFmpeg tools on your machine.</p>
+    </section>
 
     <section class="colour-story" aria-labelledby="colour-heading">
       <p class="eyebrow">Why this exists</p>
@@ -157,6 +174,17 @@
       </div>
     </section>
 
+    <section class="guide" aria-labelledby="architecture-heading">
+      <p class="eyebrow">App architecture</p>
+      <h2 id="architecture-heading">A small local stack with no cloud in the middle.</h2>
+      <div class="architecture" aria-label="Application architecture">
+        <div class="architecture-step"><small>01</small><b>App interface</b><span>PyWebView presents the native macOS desktop interface.</span></div>
+        <div class="architecture-step"><small>02</small><b>Python controller</b><span>A local-only controller coordinates queues, preflight, progress, and safe outputs.</span></div>
+        <div class="architecture-step"><small>03</small><b>FFmpeg / GPU engine</b><span>The CPU deband engine is standard; optional libplacebo/Vulkan is checked before use.</span></div>
+        <div class="architecture-step"><small>04</small><b>Exported master</b><span>The converted file is written beside the source or into the folder you choose.</span></div>
+      </div>
+    </section>
+
     <section class="guide" aria-labelledby="limits-heading">
       <p class="eyebrow">No smoke and mirrors</p>
       <h2 id="limits-heading">Known limits</h2>
@@ -165,6 +193,15 @@
         <div class="limit"><b>Source still matters</b><span>Heavy compression, bad source gradients, aggressive grading, and platform re-encoding can limit the result.</span></div>
         <div class="limit"><b>GPU is experimental</b><span>The optional libplacebo/Vulkan path is capability-checked, but the faithful CPU engine is the default release path.</span></div>
       </div>
+    </section>
+
+    <section class="guide faq" aria-labelledby="faq-heading">
+      <p class="eyebrow">FAQ</p>
+      <h2 id="faq-heading">The useful answers before you press export.</h2>
+      <details><summary>Does this create real 10-bit video?</summary><p>Yes: the output is encoded as a 10-bit HEVC Main10 or 10-bit 4:4:4 ProRes master. But that does not mean lost tones from an 8-bit original magically return; the app reduces visible banding and preserves a better container for the work that follows.</p></details>
+      <details><summary>Why is my file huge?</summary><p>ProRes 4444 prioritizes a robust grading intermediate over small files. Use HEVC Main10 when file size and sharing matter more than edit-friendly 4:4:4 output.</p></details>
+      <details><summary>Why is it slow?</summary><p>Debanding, dithering, high-quality processing, two-pass delivery, and ProRes all cost processing time. Resolution, clip duration, storage speed, and the CPU/GPU available also affect the export.</p></details>
+      <details><summary>Will it fix every clip?</summary><p>No. Very compressed footage, severe posterization, aggressive grades, or another platform’s re-encode can still show banding. Test a short preview and choose the gentlest effective setting.</p></details>
     </section>
 
     <section class="guide" aria-labelledby="stack-heading">
