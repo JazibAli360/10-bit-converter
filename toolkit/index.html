@@ -201,6 +201,10 @@
   .profile-choice{padding:14px;text-align:left;border:1px solid var(--line);background:var(--card);min-height:78px}
   .profile-choice b{display:block;font-size:14px;margin-bottom:4px}.profile-choice span{display:block;color:var(--muted);font-size:12px;line-height:1.35}
   .profile-choice.active{border-color:var(--accent);background:var(--accent-dim);box-shadow:0 0 0 1px var(--accent)}
+  .profile-explainer{display:grid;grid-template-columns:1.1fr 1fr 1.1fr;gap:1px;margin:-2px 0 12px;overflow:hidden;border:1px solid var(--line);border-radius:9px;background:var(--line)}
+  .profile-explainer>div{min-width:0;padding:10px 12px;background:var(--bg)}
+  .profile-explainer span{display:block;margin-bottom:3px;color:var(--muted);font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase}
+  .profile-explainer b{display:block;font-size:12px;line-height:1.38}
   .row.selected{background:var(--accent-dim);box-shadow:inset 3px 0 0 var(--accent)}
   .inspector{display:none;margin-top:10px;padding:14px 16px}.inspector.on{display:block}
   .inspector-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;border-top:1px solid var(--line);border-left:1px solid var(--line)}
@@ -209,7 +213,7 @@
   .convert-dock{position:sticky;bottom:0;z-index:8;margin-top:12px;padding:10px 14px;background:color-mix(in srgb,var(--card) 94%,transparent);backdrop-filter:blur(14px);box-shadow:0 -8px 24px rgba(0,0,0,.08)}
   .convert-dock .actions{margin:8px 0 2px}.completion{display:none;padding:18px;margin:10px 0}.completion.on{display:block}
   .completion h2{margin:0 0 6px}.completion-stats{font-size:16px;font-weight:600;margin:6px 0}.completion-path{font-family:var(--mono);font-size:11px;color:var(--muted);word-break:break-all}
-  @media(max-width:700px){.profile-choices{grid-template-columns:1fr}.inspector-grid{grid-template-columns:1fr}.row{align-items:flex-start}.row .status{width:auto;min-width:64px}.row .pct{width:42px}.now{display:block}.running-preview{width:100%;height:150px;margin-top:12px}.scope-pair{grid-template-columns:1fr}.engine-choice{grid-template-columns:1fr}.engine-choice select{width:100%}}
+  @media(max-width:700px){.profile-choices,.profile-explainer{grid-template-columns:1fr}.inspector-grid{grid-template-columns:1fr}.row{align-items:flex-start}.row .status{width:auto;min-width:64px}.row .pct{width:42px}.now{display:block}.running-preview{width:100%;height:150px;margin-top:12px}.scope-pair{grid-template-columns:1fr}.engine-choice{grid-template-columns:1fr}.engine-choice select{width:100%}}
 </style>
 </head>
 <body>
@@ -264,6 +268,12 @@
     <button class="profile-choice" id="profile-editing" onclick="applyTopProfile('editing')"><b>Editing master</b><span>ProRes 4444 · grading-ready · very large files</span></button>
     <button class="profile-choice" id="profile-advanced" onclick="applyTopProfile('advanced')"><b>Advanced</b><span>Choose codec, deband amount, bitrate, and custom values</span></button>
     <span id="customPresets" style="display:none"></span>
+  </div>
+
+  <div class="profile-explainer" id="profileExplainer" aria-live="polite">
+    <div><span>Good for</span><b id="profileGoodFor">Most clips that need a cleaner 10-bit delivery file.</b></div>
+    <div><span>This changes</span><b id="profileChanges">HEVC Main10 · medium deband · match-source rate.</b></div>
+    <div><span>Watch out</span><b id="profileWatchOut">It reduces visible banding; it does not recreate missing detail.</b></div>
   </div>
 
   <div class="export-target" id="exportTarget">

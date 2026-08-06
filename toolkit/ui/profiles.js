@@ -5,7 +5,31 @@ const PRESETS = {
   grading:{label:"Grading",mode:"ProRes 4444 (grading, huge file)",strength:"High",rate:"Quality (CRF)",settings:{max_quality:true,audio:"copy",engine:"ffmpeg-deband-v1"}},
   preserve:{label:"Gentle processing",mode:"HEVC (smaller, delivery)",strength:"Medium",rate:"Match source",settings:{max_quality:true,audio:"copy",engine:"ffmpeg-deband-v1"}},
 };
+const TOP_PROFILE_EXPLAINERS = {
+  faithful:{
+    goodFor:"Most clips that need a cleaner 10-bit delivery file.",
+    changes:"HEVC Main10 · medium deband · match-source rate.",
+    watchOut:"It reduces visible banding; it does not recreate missing detail.",
+  },
+  editing:{
+    goodFor:"Clips headed into a colour grade, edit, or VFX workflow.",
+    changes:"ProRes 4444 · high deband · quality-processing path.",
+    watchOut:"Very large files. Make sure the destination drive has room.",
+  },
+  advanced:{
+    goodFor:"People who already know which codec or deband control to change.",
+    changes:"Your settings stay in your hands: codec, strength, bitrate, and more.",
+    watchOut:"Strong deband can soften fine texture—render a short sample first.",
+  },
+};
+function renderTopProfileExplainer(key){
+  const details=TOP_PROFILE_EXPLAINERS[key]||TOP_PROFILE_EXPLAINERS.faithful;
+  [["profileGoodFor",details.goodFor],["profileChanges",details.changes],["profileWatchOut",details.watchOut]].forEach(([id,value])=>{
+    const el=document.getElementById(id); if(el) el.textContent=value;
+  });
+}
 function syncAdvancedVisibility(){ const panel=document.getElementById("advancedPanel"), fields=document.getElementById("advancedSettingsFields"); panel.style.display=advancedMode?"block":"none"; if(advancedMode) panel.open=true; if(fields) fields.style.display=advancedMode?"contents":"none"; }
-async function applyTopProfile(key){ activeTopProfile=key; ["faithful","editing","advanced"].forEach(k=>document.getElementById("profile-"+k)?.classList.toggle("active",k===key)); advancedMode=key==="advanced"; syncAdvancedVisibility(); if(key==="faithful") await applyPreset("delivery"); if(key==="editing") await applyPreset("grading"); renderQueue(queue); refreshConvert(); }
+async function applyTopProfile(key){ activeTopProfile=key; ["faithful","editing","advanced"].forEach(k=>document.getElementById("profile-"+k)?.classList.toggle("active",k===key)); renderTopProfileExplainer(key); advancedMode=key==="advanced"; syncAdvancedVisibility(); if(key==="faithful") await applyPreset("delivery"); if(key==="editing") await applyPreset("grading"); renderQueue(queue); refreshConvert(); }
 async function applyPreset(name){ const preset=PRESETS[name]; if(!preset) return; setSeg("segMode",preset.mode); setSeg("segStr",preset.strength); setSeg("segRate",preset.rate); const current=await j("/api/settings"); SETTINGS={...current,...preset.settings}; await j("/api/settings",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(SETTINGS)}); updateExportTarget(); updateCustomRate(); updateEstimate(); setActivePreset(name); setStatus(`Preset applied: ${preset.label}.`); }
 function setActivePreset(key){ ["delivery","compatibility","grading","preserve"].forEach(k=>{ const button=document.getElementById("presetBtn-"+k); if(button) button.classList.toggle("active",k===key); }); document.querySelectorAll("#customPresets [data-preset]").forEach(button=>button.classList.toggle("active",button.dataset.preset===key)); }
+renderTopProfileExplainer("faithful");
