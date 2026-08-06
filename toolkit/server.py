@@ -25,6 +25,7 @@ import atexit
 import json
 import math
 import os
+import plistlib
 import secrets
 import shutil
 import struct
@@ -55,11 +56,28 @@ from runtime_platform import (KeepAwake, app_support_dir, binary_platform_dir,
                               fallback_file_dialog, ffmpeg_tool_names, notify,
                               open_url, remove_macos_quarantine, reveal_files, IS_WINDOWS,
                               show_error)
+from update_service import ISSUES_URL, RELEASES_URL, check_for_update
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 HOST, PORT = "127.0.0.1", int(os.environ.get("TENBIT_PORT", "8766"))
 INTAKE_DIR = tempfile.mkdtemp(prefix="10bit_intake_")  # dropped/uploaded files land here
 APP_NAME = "10-bit Converter"
+DEVELOPMENT_VERSION = "0.1.0"
+
+
+def installed_app_version():
+    """Read the release version from a frozen app's Info.plist."""
+    if getattr(sys, "frozen", False):
+        info_path = os.path.normpath(os.path.join(os.path.dirname(sys.executable), "..", "Info.plist"))
+        try:
+            with open(info_path, "rb") as handle:
+                return str(plistlib.load(handle).get("CFBundleShortVersionString") or DEVELOPMENT_VERSION)
+        except (OSError, plistlib.InvalidFileException):
+            pass
+    return DEVELOPMENT_VERSION
+
+
+APP_VERSION = installed_app_version()
 APP_SUPPORT_DIR = os.environ.get(
     "TENBIT_APP_DATA",
     app_support_dir("Jazib Ali 360", APP_NAME),
@@ -74,6 +92,7 @@ X265_PRESETS = ["ultrafast", "superfast", "veryfast", "faster", "fast",
                 "medium", "slow", "slower", "veryslow"]
 SETTINGS_PATH = os.path.join(APP_SUPPORT_DIR, "settings.json")
 WINDOW_STATE_PATH = os.path.join(APP_SUPPORT_DIR, "window_state.json")
+UPDATE_STATE_PATH = os.path.join(APP_SUPPORT_DIR, "update_state.json")
 DEFAULT_SETTINGS = {
     "dest_mode": "same", "dest_dir": "", "suffix": "_10bit", "on_exists": "skip",
     "crf": 18, "preset": "slow", "deband_range": 16, "deband_blur": True,
@@ -234,6 +253,86 @@ def atomic_json_write(path, data):
         f.flush()
         os.fsync(f.fileno())
     os.replace(tmp, path)
+
+
+UPDATE_CHECK_INTERVAL_SECONDS = 7 * 24 * 60 * 60
+UPDATE_STATE_LOCK = threading.Lock()
+UPDATE_REQUEST_LOCK = threading.Lock()
+UPDATE_STATE = {"last_checked_at": 0, "last_notice_check_at": 0, "result": None, "checking": False}
+
+
+def load_update_state():
+    """Restore only the small, non-identifying weekly update-check record."""
+    try:
+        with open(UPDATE_STATE_PATH, encoding="utf-8") as handle:
+            saved = json.load(handle)
+        if isinstance(saved, dict):
+            UPDATE_STATE["last_checked_at"] = float(saved.get("last_checked_at", 0) or 0)
+            UPDATE_STATE["last_notice_check_at"] = float(saved.get("last_notice_check_at", 0) or 0)
+            result = saved.get("result")
+            if isinstance(result, dict):
+                UPDATE_STATE["result"] = result
+    except (OSError, ValueError, TypeError, json.JSONDecodeError):
+        pass
+
+
+def persist_update_state():
+    with UPDATE_STATE_LOCK:
+        snapshot = {
+            "last_checked_at": UPDATE_STATE["last_checked_at"],
+            "last_notice_check_at": UPDATE_STATE["last_notice_check_at"],
+            "result": UPDATE_STATE["result"],
+        }
+    try:
+        atomic_json_write(UPDATE_STATE_PATH, snapshot)
+    except OSError:
+        pass
+
+
+def run_update_check():
+    """Check the public release feed once; calls are serialized and bounded."""
+    with UPDATE_REQUEST_LOCK:
+        with UPDATE_STATE_LOCK:
+            UPDATE_STATE["checking"] = True
+        result = check_for_update(APP_VERSION)
+        with UPDATE_STATE_LOCK:
+            UPDATE_STATE["checking"] = False
+            UPDATE_STATE["last_checked_at"] = time.time()
+            UPDATE_STATE["result"] = result
+        persist_update_state()
+        return result
+
+
+def check_weekly_update_if_due():
+    """Run in the background at app start only when the seven-day window is due."""
+    with UPDATE_STATE_LOCK:
+        due = (time.time() - UPDATE_STATE["last_checked_at"]) >= UPDATE_CHECK_INTERVAL_SECONDS
+    if due:
+        run_update_check()
+
+
+def update_status():
+    with UPDATE_STATE_LOCK:
+        result = dict(UPDATE_STATE["result"] or {})
+        checking = bool(UPDATE_STATE["checking"])
+    return {"checking": checking, "result": result}
+
+
+def claim_weekly_update_notice():
+    """Return a newer release at most once for each weekly check result."""
+    with UPDATE_STATE_LOCK:
+        result = dict(UPDATE_STATE["result"] or {})
+        checking = bool(UPDATE_STATE["checking"])
+        checked_at = UPDATE_STATE["last_checked_at"]
+        should_notify = bool(
+            result.get("ok") and result.get("update_available")
+            and checked_at > UPDATE_STATE["last_notice_check_at"]
+        )
+        if should_notify:
+            UPDATE_STATE["last_notice_check_at"] = checked_at
+    if should_notify:
+        persist_update_state()
+    return {"checking": checking, "notice": result if should_notify else None}
 
 
 def load_window_state():
@@ -1680,6 +1779,14 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, dict(LAST_REPORT))
         elif u.path == "/api/history":
             self._send(200, {"reports": load_history()})
+        elif u.path == "/api/update-status":
+            self._send(200, update_status())
+        elif u.path == "/api/update-notice":
+            self._send(200, claim_weekly_update_notice())
+        elif u.path == "/api/update":
+            # A visible, manual check. Startup checks are scheduled separately
+            # and at most once per week.
+            self._send(200, run_update_check())
         elif u.path in ("/api/scope", "/api/compare-image", "/api/filmstrip-image"):
             q = urllib.parse.parse_qs(u.query)
             token = q.get("token", [""])[0]
@@ -1879,6 +1986,14 @@ class Handler(BaseHTTPRequestHandler):
             if paths:
                 reveal_files(paths)
             self._send(200, {"ok": bool(paths), "count": len(paths)})
+        elif u.path == "/api/open-external":
+            # External links are intentionally allow-listed, not user-supplied.
+            target = self._read_json().get("target")
+            url = {"feedback": ISSUES_URL, "releases": RELEASES_URL}.get(target)
+            if not url:
+                self._send(400, {"error": "unknown external destination"})
+                return
+            self._send(200, {"ok": open_url(url)})
         elif u.path == "/api/processed-sample":
             data = self._read_json()
             path = data.get("path")
@@ -2034,6 +2149,10 @@ def main():
         return
     atexit.register(INSTANCE_GUARD.release)
     atexit.register(cleanup_temp)
+    load_update_state()
+    # This is the only background network task: one public GitHub Release
+    # metadata request every seven days, never while an export is running.
+    threading.Thread(target=check_weekly_update_if_due, daemon=True).start()
     if not bundled_ready:
         # Developer/browser mode can still use a system FFmpeg. The packaged
         # app above is deliberately stricter and never relies on it.

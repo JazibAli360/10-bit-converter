@@ -6,6 +6,7 @@ notifications, file reveal, and the temporary "keep awake" request used while
 an export is running.
 """
 
+import importlib
 import os
 import platform
 import subprocess
@@ -102,8 +103,11 @@ def fallback_file_dialog(kind, prompt, multiple=False):
     if not IS_WINDOWS:
         return None
     try:
-        import tkinter as tk
-        from tkinter import filedialog
+        # Keep this Windows-only fallback invisible to py2app's module graph.
+        # The macOS app uses a PyWebView native picker; importing Tk during a
+        # macOS build can make py2app initialize Apple's deprecated runtime.
+        tk = importlib.import_module("tkinter")
+        filedialog = importlib.import_module("tkinter.filedialog")
         root = tk.Tk()
         root.withdraw()
         root.attributes("-topmost", True)

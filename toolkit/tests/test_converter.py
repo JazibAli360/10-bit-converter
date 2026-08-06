@@ -19,9 +19,57 @@ from single_instance import InstanceGuard
 import runtime_platform
 from engines import DEFAULT_ENGINE, LIBPLACEBO_ENGINE, engine_catalog, requested_engine
 from media_probe import pixfmt_bits
+from update_service import check_for_update, version_key
 
 
 class ExportSafetyTests(unittest.TestCase):
+    def test_update_checker_reads_only_a_valid_github_release_tag(self):
+        class Response:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_):
+                return False
+
+            def read(self, _limit):
+                return b'{"tag_name":"v0.2.0"}'
+
+        observed = {}
+
+        def opener(request, timeout):
+            observed["url"] = request.full_url
+            observed["timeout"] = timeout
+            return Response()
+
+        result = check_for_update("0.1.0", opener=opener)
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["update_available"])
+        self.assertEqual(result["latest_version"], "0.2.0")
+        self.assertIn("/releases/latest", observed["url"])
+        self.assertEqual(observed["timeout"], 6)
+        self.assertEqual(version_key("v1.2.3"), (1, 2, 3, 0))
+        self.assertIsNone(version_key("latest"))
+
+    def test_weekly_update_notice_is_claimed_once_per_completed_check(self):
+        with tempfile.TemporaryDirectory() as folder, \
+             patch.object(server, "UPDATE_STATE_PATH", os.path.join(folder, "update_state.json")), \
+             patch("server.check_for_update", return_value={
+                 "ok": True, "current_version": "0.1.0", "latest_version": "0.2.0", "update_available": True,
+             }):
+            original = dict(server.UPDATE_STATE)
+            try:
+                server.UPDATE_STATE.update({"last_checked_at": 0, "last_notice_check_at": 0,
+                                            "result": None, "checking": False})
+                server.run_update_check()
+                first = server.claim_weekly_update_notice()
+                second = server.claim_weekly_update_notice()
+                self.assertEqual(first["notice"]["latest_version"], "0.2.0")
+                self.assertIsNone(second["notice"])
+                self.assertTrue(os.path.isfile(server.UPDATE_STATE_PATH))
+            finally:
+                server.UPDATE_STATE.clear()
+                server.UPDATE_STATE.update(original)
+
     def test_windows_release_contract_uses_exe_tools_and_local_appdata(self):
         with patch.object(runtime_platform, "IS_WINDOWS", True), \
              patch.object(runtime_platform, "IS_MACOS", False), \

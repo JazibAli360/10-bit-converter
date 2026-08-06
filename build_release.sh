@@ -17,7 +17,7 @@ if [[ ! -x "$PYTHON" ]]; then
 fi
 
 pushd "$TOOLKIT" >/dev/null
-"$PYTHON" setup_native.py py2app --arch arm64
+TENBIT_RELEASE_VERSION="$VERSION" "$PYTHON" setup_native.py py2app --arch arm64
 codesign --verify --deep --strict "$APP"
 
 for required in \

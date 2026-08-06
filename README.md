@@ -97,6 +97,11 @@ The interface talks to a local Python controller on `127.0.0.1`, which runs
 the bundled FFmpeg tools on your machine. There are no accounts, telemetry,
 uploads, or cloud-rendering path in the app.
 
+The only optional network activity is update metadata: once every seven days,
+the app asks GitHub Releases whether a newer public version exists. It sends no
+footage or account data, never downloads or installs an update automatically,
+and always leaves the decision to you.
+
 ## For the curious: how it works
 
 ```mermaid

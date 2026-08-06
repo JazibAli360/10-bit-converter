@@ -259,6 +259,8 @@
         <button onclick="openHistory();closeAllMenus()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 12a9 9 0 109-9 9.2 9.2 0 00-6.4 2.6L3 8m0-5v5h5"/><path d="M12 7v5l3 2"/></svg>Conversion history…</button>
         <button onclick="clearQueue();closeAllMenus()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 6h18M8 6V4a1 1 0 011-1h6a1 1 0 011 1v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6h14z"/></svg>Clear saved queue</button>
         <button onclick="document.getElementById('mHelp').classList.add('on');closeAllMenus()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 015.83 1c0 2-3 2-3 4M12 17h.01"/></svg>What this does…</button>
+        <button onclick="openUpdateCheck();closeAllMenus()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 11a8 8 0 10-2.34 5.66"/><path d="M20 4v7h-7"/></svg>Check for updates…</button>
+        <button onclick="sendFeedback();closeAllMenus()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/></svg>Send feedback / report a bug</button>
       </div>
     </div>
   </div>
@@ -531,6 +533,13 @@
   <p style="line-height:1.6;color:var(--muted)">Tip: use <b>Preview scopes</b> or <b>Compare</b> to see the effect before committing to a full encode.</p>
   <div style="border-top:1px solid var(--line);margin-top:14px;padding-top:10px;color:var(--muted);font-size:13px">Built by <b>Jazib Ali 360</b></div>
   <div class="set-actions"><button class="ghost" onclick="closeModal('mHelp')">Close</button></div>
+</div></div>
+
+<div class="modal" id="mUpdate"><div class="sheet" style="max-width:520px">
+  <h2>Check for updates</h2>
+  <p id="updateStatus" class="hint" aria-live="polite">Checking GitHub Releases…</p>
+  <p class="hint" style="margin:0">The app checks GitHub Releases once a week for a newer version. It never downloads or installs an update automatically.</p>
+  <div class="set-actions"><button class="ghost" onclick="closeModal('mUpdate')">Later</button><button class="primary" onclick="openReleases()">Open GitHub Releases</button></div>
 </div></div>
 
 <div class="modal" id="mMsg"><div class="sheet">
@@ -1132,6 +1141,7 @@ async function retryFailed(){
 <script src="ui/conversion.js"></script>
 <script src="ui/queue.js"></script>
 <script src="ui/settings.js"></script>
+<script src="ui/support.js"></script>
 <script>
 /* Moved to ui/settings.js.
 // ---- settings ----
