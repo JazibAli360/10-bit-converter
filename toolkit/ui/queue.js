@@ -1,10 +1,12 @@
 /* Queue rendering, selection, Finder drops, and per-row actions. */
 let queueLayoutKey="";
+function setQueueSignal(text){ const signal=document.getElementById("queueSignalText"); if(signal) signal.textContent=text; }
 function queueLayoutSignature(items){
   return JSON.stringify(items.map(it=>[it.path,it.name,it.status,it.out,it.info,it.error,it.recovery,it.log_path,it.loading,it.output_suffix,JSON.stringify(it.override||null)]));
 }
 function renderQueue(items){
   const q=document.getElementById("queue");
+  setQueueSignal(items.length?`${items.length} clip${items.length===1?"":"s"} ready to finish`:"Ready for a source clip");
   document.getElementById("headerSubtitle").style.display=items.length?"none":"block";
   if(!items.length){ q.innerHTML=`<div class="empty">
       <div class="teach-illust"><div class="swatch banded"><span class="cap">8-BIT</span></div><span class="teach-arrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span><div class="swatch smooth"><span class="cap">10-BIT</span></div></div>
@@ -20,6 +22,7 @@ function renderQueue(items){
     const output=outputPreviewFor(it), loading=!!it.loading;
     r.innerHTML=`<span class="drag-handle" title="Drag to reorder">⠿</span>
       <input type="checkbox" data-i="${i}" ${running?'disabled':''}>
+      <span class="clip-swatch" aria-hidden="true"></span>
       <span class="name-wrap"><span class="name" title="${escHtml(srcInfo)}">${st==='Running'?`<span class="phase-pill">${escHtml(currentPhase)}</span>`:''}${escHtml(it.name)}</span>
         ${loading?`<span class="meta-skeleton"></span>`:`<span class="profile-row"><button class="output-preview" data-clip="${i}" title="Change this video's export settings">${profileSummaryHtml(it)} · ${st==='Done'?'Saved':'Export'}: ${escHtml(output.short)}</button>${it.override?`<button class="mini" data-resetclip="${i}" title="Reset this video to global settings">Reset</button>`:''}</span>`}
         ${it.smart?`<span class="info">Experimental gradient estimate: ${escHtml(it.smart.recommended_strength)} deband · sample at ${fmtT(it.smart.worst_time||0)}</span>`:''}${it.info?`<span class="info">${escHtml(it.info)}</span>`:''}${st==='Failed'&&it.recovery?`<span class="info">${escHtml(it.recovery)}</span>`:''}</span>
@@ -111,8 +114,8 @@ qEl.addEventListener("click",e=>{
   const row=e.target.closest(".row"); if(row && !e.target.closest("button,input,.row-action-menu")){ selectedRowIndex=+row.dataset.i; renderQueue(queue); }
 });
 const isFileDrag=e=>e.dataTransfer?.types?.includes("Files");
-qEl.addEventListener("dragover",e=>{ if(!isFileDrag(e)) return; e.preventDefault(); qEl.classList.add("drop"); });
-qEl.addEventListener("dragleave",e=>{ if(!qEl.contains(e.relatedTarget)) qEl.classList.remove("drop"); });
+qEl.addEventListener("dragover",e=>{ if(!isFileDrag(e)) return; e.preventDefault(); qEl.classList.add("drop"); setQueueSignal("Drop clips here to add them"); });
+qEl.addEventListener("dragleave",e=>{ if(!qEl.contains(e.relatedTarget)){ qEl.classList.remove("drop"); setQueueSignal(queue.length?`${queue.length} clip${queue.length===1?"":"s"} ready to finish`:"Ready for a source clip"); } });
 qEl.addEventListener("drop",async e=>{
   const droppedFiles=[...(e.dataTransfer?.files||[])];
   if(!isFileDrag(e) && !droppedFiles.length && !NATIVE_SHELL) return;

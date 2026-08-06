@@ -19,3 +19,17 @@ function renderZone(id){const cfg=ZONES[id],el=document.getElementById(id);if(!c
 Object.keys(ZONES).forEach(id=>{const el=document.getElementById(id);if(el)el.addEventListener("input",()=>renderZone(id));});function syncZones(){Object.keys(ZONES).forEach(renderZone);}
 function initializeApp(){j("/api/settings").then(s=>{SETTINGS=s;updateExportTarget();syncFormatUI();updateEstimate();updateCustomRate();updateCustomDeband();});loadCustomPresets();restoreQueue();setControls();}
 initializeApp();
+
+/* A small sense of place for mouse users. No automated settings changes occur here. */
+(()=>{
+  const workbench=document.querySelector(".studio-shell");
+  if(!workbench || !window.matchMedia?.("(pointer:fine)").matches)return;
+  let frame=0, x=50, y=25;
+  const paint=()=>{frame=0;workbench.style.setProperty("--pointer-x",x+"px");workbench.style.setProperty("--pointer-y",y+"px");};
+  workbench.addEventListener("pointermove",event=>{const bounds=workbench.getBoundingClientRect();x=event.clientX-bounds.left;y=event.clientY-bounds.top;workbench.dataset.pointer="active";if(!frame)frame=requestAnimationFrame(paint);});
+  workbench.addEventListener("pointerleave",()=>{workbench.dataset.pointer="";});
+  document.querySelectorAll(".profile-choice").forEach(choice=>{
+    choice.addEventListener("pointerenter",()=>{const label=choice.querySelector("b")?.textContent||"profile";setQueueSignal(`Review ${label}, then select when it fits the clip`);});
+    choice.addEventListener("pointerleave",()=>{setQueueSignal(queue.length?`${queue.length} clip${queue.length===1?"":"s"} ready to finish`:"Ready for a source clip");});
+  });
+})();
