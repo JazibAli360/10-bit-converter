@@ -39,9 +39,19 @@ The current packaged release target is Apple Silicon macOS. Windows build and
 GPU packaging tooling lives in [`.windows/`](.windows/), but a final Windows
 installer needs to be built and validated on Windows hardware.
 
+## Downloads and product film
+
+Download the current macOS build and watch the product film from the
+[GitHub Releases page](https://github.com/JazibAli360/10-bit-converter/releases).
+The release asset is an Apple Silicon (`arm64`) macOS app archive.
+
 ## Run or build
 
 The full macOS source/build notes are in [toolkit/README.md](toolkit/README.md).
+
+Want a Windows build? Start with [`.windows/README.md`](.windows/README.md),
+or hand the copy-ready brief in [`.windows/AGENT_BUILD.md`](.windows/AGENT_BUILD.md)
+to an AI coding agent on a Windows x64 machine.
 
 The repository intentionally excludes packaged `.app` bundles, FFmpeg binaries,
 test videos, and other large local artifacts. Add your own redistributable
