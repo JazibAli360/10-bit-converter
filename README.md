@@ -143,6 +143,23 @@ Built openly with:
 - Optional libplacebo + Vulkan GPU deband path
 - py2app macOS packaging
 
+## Collaborate, support, or give feedback
+
+The most useful support is real-world footage and honest feedback. Open a
+[GitHub Issue](https://github.com/JazibAli360/10-bit-converter/issues) for a
+bug, a feature idea, GPU compatibility notes, or a workflow the app should
+handle better. For a useful bug report, include the app version, macOS version,
+input codec/resolution, selected export profile, and the relevant error text—
+never upload private footage or credentials.
+
+Want to fork or contribute? Start with [AGENTS.md](AGENTS.md), the
+[brand guide](docs/BRAND.md), and the [source ledger](docs/SOURCES.md).
+
+Please read the [Code of Conduct](CODE_OF_CONDUCT.md) before participating.
+Security issues have their own private-reporting guidance in
+[SECURITY.md](SECURITY.md); do not disclose sensitive details in a public
+issue.
+
 ## Status
 
 The current packaged release target is Apple Silicon macOS. Windows build and
