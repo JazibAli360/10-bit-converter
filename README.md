@@ -1,5 +1,9 @@
 # 10-bit Converter
 
+<p align="center">
+  <img src="docs/app-icon.png" width="120" alt="10-bit Converter app icon">
+</p>
+
 A local macOS desktop app for making 8-bit AI video easier to grade.
 
 AI-generated clips can look great until a smooth sky, shadow, fog layer, or
