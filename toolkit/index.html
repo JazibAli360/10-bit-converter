@@ -468,9 +468,14 @@
       <option value="true">On — uses extra processing while converting</option></select>
     <label>Colour-safe processing</label>
     <select id="st_colour_safe"><option value="false">Off — Faithful 10-bit</option><option value="true">On — AI / generated footage (slower)</option></select>
-    <label>Source interpretation</label>
-    <select id="st_source_interpretation"><option value="preserve">Preserve file tags / appearance</option><option value="rec709_limited">Assume Rec.709 SDR · limited range</option><option value="srgb_full">Assume sRGB render · full range</option></select>
-    <div class="hint" style="grid-column:2;margin:-7px 0 2px">Colour-safe uses 16-bit 4:4:4 internal processing, gentler chroma cleanup, and stable dither. It does not create missing colour values.</div>
+    <h3>Colour signal</h3>
+    <div class="hint" id="colourManagementPath" style="grid-column:1 / -1;margin:-5px 0 2px;padding:9px 11px;border:1px solid var(--line);border-radius:8px;font-family:var(--mono);font-size:11px">Preserve file signal → 16-bit working precision → Match input</div>
+    <label>Interpret input as</label>
+    <select id="st_source_interpretation" onchange="syncColourManagement()"><option value="preserve">Preserve file tags / do not assume</option><option value="rec709_limited">Rec.709 SDR · legal range</option><option value="srgb_full">sRGB SDR render · full range</option></select>
+    <label>Output colour space</label>
+    <select id="st_output_colour" onchange="syncColourManagement()"><option value="match_input">Match input / no colour transform</option><option value="rec709_limited">Rec.709 SDR · legal range</option><option value="srgb_full">sRGB SDR · full range</option></select>
+    <div class="hint" id="colourManagementHint" style="grid-column:2;margin:-7px 0 2px">Safe default: image values are not colour-transformed. Existing tags are carried through; an untagged source stays untagged.</div>
+    <div class="hint" style="grid-column:2;margin:-3px 0 2px">Colour-safe uses 16-bit 4:4:4 internal processing, gentler chroma cleanup, and stable dither. It does not create missing colour values.</div>
     <div id="advancedSettingsFields" style="display:none">
     <h3 class="hevc-only">Quality &amp; speed (HEVC and H.264 only)</h3>
     <label class="hevc-only">CRF (Quality mode)</label>

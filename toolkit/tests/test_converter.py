@@ -217,6 +217,27 @@ class ExportSafetyTests(unittest.TestCase):
         with patch("conversion_service.probe_colour_metadata", return_value={}):
             self.assertEqual(planner.colour_args("/clip-without-tags.mp4"), [])
 
+    def test_colour_transform_requires_known_or_explicit_input_signal(self):
+        planner = ConversionPlanner("/tmp/intake", DEFAULT_ENGINE.strength_thresholds, DEFAULT_ENGINE)
+        with patch("conversion_service.probe_colour_metadata", return_value={}):
+            management = planner.colour_management("/clip-without-tags.mp4", "preserve", "rec709_limited")
+        self.assertFalse(management["ready"])
+        self.assertIn("Choose an input colour interpretation", management["reason"])
+
+    def test_colour_transform_uses_16_bit_zscale_and_tags_the_output(self):
+        planner = ConversionPlanner("/tmp/intake", DEFAULT_ENGINE.strength_thresholds, DEFAULT_ENGINE)
+        settings = {"crf": 18, "deband_range": 16, "deband_blur": True, "dither": 0,
+                    "thr_custom": "0.03", "max_quality": False, "denoise": "off", "deflicker": False,
+                    "audio": "copy", "colour_safe": False, "source_interpretation": "srgb_full",
+                    "output_colour": "rec709_limited"}
+        plan = planner.plan({"path": "/clip.mp4"}, "HEVC (smaller, delivery)", "Medium", "Quality (CRF)",
+                            settings, DEFAULT_ENGINE)
+        self.assertIn("format=yuv444p16le,zscale=primariesin=bt709:transferin=iec61966-2-1", plan["filters"])
+        self.assertIn("range=tv", plan["filters"])
+        self.assertIn("-color_trc", plan["colour"])
+        self.assertIn("bt709", plan["colour"])
+        self.assertTrue(plan["colour_management"]["transformed"])
+
     def test_optional_libplacebo_is_capability_gated(self):
         class Result:
             returncode = 1

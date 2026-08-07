@@ -13,6 +13,22 @@ VALID_MODES = {"HEVC (smaller, delivery)", "H.264 (10-bit, delivery)",
 VALID_RATES = {"Match source", "Quality (CRF)", "Custom"}
 EXPORT_PROVENANCE = "Processed with 10-bit Converter by Jazib Ali 360"
 
+# These are deliberately small, conservative SDR choices.  A colour-space
+# transform is only possible once the source signal is known; untagged files
+# therefore remain untouched until the creator explicitly interprets them.
+COLOUR_SPECS = {
+    "rec709_limited": {
+        "color_primaries": "bt709", "color_transfer": "bt709",
+        "color_space": "bt709", "color_range": "tv",
+    },
+    "srgb_full": {
+        "color_primaries": "bt709", "color_transfer": "iec61966-2-1",
+        "color_space": "bt709", "color_range": "pc",
+    },
+}
+REQUIRED_COLOUR_KEYS = ("color_primaries", "color_transfer", "color_space", "color_range")
+INVALID_COLOUR_VALUES = {"", "unknown", "N/A", "reserved", None}
+
 
 class ConversionPlanner:
     """Resolve one queue item into a complete, engine-neutral export plan."""
@@ -85,20 +101,11 @@ class ConversionPlanner:
         return ["-c:a", "aac", "-b:a", "192k"]
 
     @staticmethod
-    def colour_args(input_path, source_interpretation="preserve"):
-        values = probe_colour_metadata(input_path)
-        assumptions = {
-            "rec709_limited": {"color_primaries": "bt709", "color_transfer": "bt709",
-                                "color_space": "bt709", "color_range": "tv"},
-            "srgb_full": {"color_primaries": "bt709", "color_transfer": "iec61966-2-1",
-                          "color_space": "bt709", "color_range": "pc"},
-        }
-        if source_interpretation in assumptions:
-            values = assumptions[source_interpretation]
+    def colour_args_from_values(values):
         # FFprobe omits tags that are not present.  Treat an omitted value the
         # same way as an explicitly unknown one: preserve the picture and let
         # the encoder proceed without manufacturing a colour declaration.
-        invalid, args = {"", "unknown", "N/A", "reserved", None}, []
+        invalid, args = INVALID_COLOUR_VALUES, []
         for key, flag in (("color_primaries", "-color_primaries"), ("color_transfer", "-color_trc"),
                           ("color_space", "-colorspace")):
             value = values.get(key)
@@ -108,6 +115,56 @@ class ConversionPlanner:
         if range_value in {"tv", "pc", "limited", "full"}:
             args.extend(("-color_range", range_value))
         return args
+
+    @classmethod
+    def colour_management(cls, input_path, source_interpretation="preserve", output_colour="match_input"):
+        """Resolve explicit colour intent without ever guessing an untagged source.
+
+        ``match_input`` is intentionally a tag/value preserving path.  A real
+        zscale transform is only made when the input has complete metadata or
+        the creator selected an explicit SDR interpretation.
+        """
+        source = (dict(COLOUR_SPECS[source_interpretation]) if source_interpretation in COLOUR_SPECS
+                  else dict(probe_colour_metadata(input_path)))
+        target = dict(source) if output_colour == "match_input" else dict(COLOUR_SPECS.get(output_colour, {}))
+        complete_source = all(source.get(key) not in INVALID_COLOUR_VALUES for key in REQUIRED_COLOUR_KEYS)
+        if output_colour != "match_input" and not complete_source:
+            return {
+                "ready": False,
+                "reason": "Choose an input colour interpretation before converting this untagged clip to a different output colour space.",
+                "source": source, "output": target, "filter": "", "transformed": False,
+            }
+        if output_colour == "match_input" or source == target:
+            return {"ready": True, "source": source, "output": target, "filter": "", "transformed": False}
+
+        # zscale uses the same canonical FFmpeg names returned by ffprobe.
+        # Work in 16-bit 4:4:4 for the conversion, then let the export profile
+        # choose the delivery/master pixel format at the end of the chain.
+        transform = (
+            "format=yuv444p16le,"
+            f"zscale=primariesin={source['color_primaries']}:transferin={source['color_transfer']}:"
+            f"matrixin={source['color_space']}:rangein={source['color_range']}:"
+            f"primaries={target['color_primaries']}:transfer={target['color_transfer']}:"
+            f"matrix={target['color_space']}:range={target['color_range']}"
+        )
+        return {"ready": True, "source": source, "output": target, "filter": transform, "transformed": True}
+
+    @classmethod
+    def colour_args(cls, input_path, source_interpretation="preserve", output_colour="match_input"):
+        management = cls.colour_management(input_path, source_interpretation, output_colour)
+        if not management["ready"]:
+            raise ValueError(management["reason"])
+        return cls.colour_args_from_values(management["output"])
+
+    @staticmethod
+    def append_before_output_format(filters, pixel_format, addition):
+        """Keep engine processing intact and run colour conversion before output packing."""
+        if not addition:
+            return filters
+        output_format = f",format={pixel_format}"
+        if filters.endswith(output_format):
+            return f"{filters[:-len(output_format)]},{addition}{output_format}"
+        return f"{filters},{addition}"
 
     @staticmethod
     def colour_encoder_args(kind, colour_args):
@@ -146,6 +203,13 @@ class ConversionPlanner:
                 pass
         kind = self.mode_kind(mode)
         is_prores = kind == "prores"
+        input_path = item["path"]
+        colour_management = self.colour_management(
+            input_path, item_settings.get("source_interpretation", "preserve"),
+            item_settings.get("output_colour", "match_input"),
+        )
+        if not colour_management["ready"]:
+            raise ValueError(colour_management["reason"])
         threshold = engine.threshold_for(strength, str(item_settings.get("thr_custom", "0.03")))
         pixel_format = "yuv444p10le" if is_prores else "yuv420p10le"
         if engine.engine_id == self.default_engine.engine_id:
@@ -157,20 +221,23 @@ class ConversionPlanner:
                                                 colour_safe=item_settings.get("colour_safe", False))
         else:
             filters = engine.build_filter_chain(threshold, pixel_format, iterations=2, radius=16, grain=5)
-        input_path = item["path"]
+        filters = self.append_before_output_format(filters, pixel_format, colour_management["filter"])
         streams = [*self.stream_map_args(), *self.subtitle_args(input_path)[0]]
         audio = self.audio_args(input_path, is_prores, item_settings.get("audio", "copy"))
-        colour = self.colour_args(input_path, item_settings.get("source_interpretation", "preserve"))
+        colour = self.colour_args_from_values(colour_management["output"])
         colour_encoder = self.colour_encoder_args(kind, colour) if not is_prores else []
         rate_arguments = [] if is_prores else self.rate_args(rate, item_settings, input_path)
         source_bits = pixfmt_bits(probe_pix_fmt(input_path))
         profile = f"{self.format_label(mode)} · {strength} deband"
         if item_settings.get("colour_safe"):
             profile += " · AI Colour-Safe"
+        if colour_management["transformed"]:
+            profile += " · colour-managed"
         profile += " · codec-managed" if is_prores else f" · {rate}"
         return {"mode": mode, "strength": strength, "rate": rate, "override": override, "settings": item_settings,
                 "kind": kind, "is_prores": is_prores, "filters": filters, "streams": streams, "audio": audio,
                 "colour": colour, "rate_args": rate_arguments, "source_bits": source_bits,
                 "colour_encoder": colour_encoder, "provenance": self.provenance_args(),
                 "duration": probe_duration(input_path), "profile": profile,
+                "colour_management": colour_management,
                 "subtitle_note": self.subtitle_args(input_path)[1]}

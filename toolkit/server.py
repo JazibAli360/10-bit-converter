@@ -107,6 +107,7 @@ DEFAULT_SETTINGS = {
     "live_preview": False,     # opt-in: source-frame updates cost an extra FFmpeg decode
     "colour_safe": False,      # high-precision, chroma-aware generated-footage path
     "source_interpretation": "preserve",  # preserve | rec709_limited | srgb_full
+    "output_colour": "match_input",  # match_input | rec709_limited | srgb_full
     "engine": "ffmpeg-deband-v1",
 }
 
@@ -414,6 +415,8 @@ def save_settings(s):
     clean["colour_safe"] = bool(clean["colour_safe"])
     if clean["source_interpretation"] not in {"preserve", "rec709_limited", "srgb_full"}:
         clean["source_interpretation"] = "preserve"
+    if clean["output_colour"] not in {"match_input", "rec709_limited", "srgb_full"}:
+        clean["output_colour"] = "match_input"
     try:
         atomic_json_write(SETTINGS_PATH, clean)
     except Exception:
@@ -427,7 +430,7 @@ CUSTOM_PRESETS_PATH = os.path.join(APP_SUPPORT_DIR, "custom_presets.json")
 # per-machine and shouldn't travel with a preset).
 PRESET_SETTINGS_KEYS = ["crf", "preset", "deband_range", "deband_blur", "dither", "thr_custom",
                         "target_mbps", "deflicker", "max_quality", "audio", "denoise",
-                        "two_pass", "dual_export"]
+                        "two_pass", "dual_export", "colour_safe", "source_interpretation", "output_colour"]
 
 
 def load_custom_presets():
@@ -1076,6 +1079,7 @@ def build_preflight(items, mode, strength, rate, settings):
     dest_dir = settings["dest_dir"] if settings["dest_mode"] == "custom" else ""
     suffix = settings["suffix"] or "_10bit"
     rows, folders, total, reserved, folder_estimates = [], set(), 0, set(), {}
+    blocking = []
     on_exists = settings.get("on_exists", "skip")
     for it in items:
         item_mode, item_strength, item_rate, override = normalise_job_params(it, mode, strength, rate)
@@ -1083,6 +1087,12 @@ def build_preflight(items, mode, strength, rate, settings):
         if "target_mbps" in override:
             try: local_settings["target_mbps"] = float(override["target_mbps"])
             except (TypeError, ValueError): pass
+        colour_check = CONVERSION_PLANNER.colour_management(
+            it["path"], local_settings.get("source_interpretation", "preserve"),
+            local_settings.get("output_colour", "match_input"),
+        )
+        if not colour_check["ready"]:
+            blocking.append(f"{it.get('name', os.path.basename(it['path']))}: {colour_check['reason']}")
         base_out = make_output_path(it["path"], mode_kind(item_mode) == "prores", dest_dir,
                                     str(it.get("output_suffix") or suffix))
         collision = os.path.exists(base_out) or base_out in reserved
@@ -1095,7 +1105,7 @@ def build_preflight(items, mode, strength, rate, settings):
         rows.append({"name": it.get("name", os.path.basename(it["path"])), "out": out,
                      "format": format_label(item_mode), "strength": item_strength,
                      "exists": collision, "renamed": out != base_out, "estimate": estimate})
-    disks, blocking, warnings = [], [], []
+    disks, warnings = [], []
     for folder in sorted(folders):
         try:
             base, writable = writable_parent(folder)

@@ -4,12 +4,22 @@ async function openSettings(){
   if(!preset.options.length) ["ultrafast","superfast","veryfast","faster","fast","medium","slow","slower","veryslow"].forEach(v=>preset.add(new Option(v,v)));
   st_dest_mode.value=s.dest_mode; st_dest_dir.value=s.dest_dir; st_suffix.value=s.suffix; st_on_exists.value=s.on_exists; st_audio.value=s.audio||"copy"; st_dual_export.value=String(s.dual_export); st_live_preview.value=String(!!s.live_preview); engineSelect.value=s.engine||"ffmpeg-deband-v1";
   st_crf.value=s.crf; st_preset.value=s.preset; st_deband_range.value=s.deband_range; st_deband_blur.value=String(s.deband_blur); st_dither.value=s.dither; st_deflicker.value=String(s.deflicker); st_max_quality.value=String(s.max_quality); st_denoise.value=s.denoise||"off"; st_two_pass.value=String(s.two_pass);
-  st_colour_safe.value=String(!!s.colour_safe); st_source_interpretation.value=s.source_interpretation||"preserve";
-  syncSlv(); syncZones(); syncFormatUI(); syncAdvancedVisibility(); document.getElementById("mSettings").classList.add("on");
+  st_colour_safe.value=String(!!s.colour_safe); st_source_interpretation.value=s.source_interpretation||"preserve"; st_output_colour.value=s.output_colour||"match_input";
+  syncSlv(); syncZones(); syncFormatUI(); syncAdvancedVisibility(); syncColourManagement(); document.getElementById("mSettings").classList.add("on");
+}
+function syncColourManagement(){
+  const input=st_source_interpretation.value, output=st_output_colour.value, hint=document.getElementById("colourManagementHint"), path=document.getElementById("colourManagementPath");
+  const labels={preserve:"Preserve file signal",rec709_limited:"Rec.709 SDR · legal",srgb_full:"sRGB SDR · full"};
+  path.textContent=`${labels[input]}  →  16-bit working precision  →  ${output==="match_input"?"Match input":labels[output]}`;
+  hint.textContent=output==="match_input"
+    ? "Safe default: image values are not colour-transformed. Existing tags are carried through; an untagged source stays untagged."
+    : input==="preserve"
+      ? "A conversion needs complete embedded source tags. If this clip is untagged, choose its actual input interpretation before exporting."
+      : "The app will explicitly convert between these SDR signals in 16-bit precision, then tag the output. This is technical colour management—not a creative grade.";
 }
 async function pickDest(){ const r=await j("/api/pick-folder-path",{method:"POST"}); if(r.folder){ st_dest_dir.value=r.folder; st_dest_mode.value="custom"; } }
 async function saveSettings(){
-  const body={dest_mode:st_dest_mode.value,dest_dir:st_dest_dir.value.trim(),suffix:st_suffix.value.trim()||"_10bit",on_exists:st_on_exists.value,audio:st_audio.value,dual_export:st_dual_export.value==="true",live_preview:st_live_preview.value==="true",engine:engineSelect.value,crf:+st_crf.value,preset:st_preset.value,deband_range:+st_deband_range.value,deband_blur:st_deband_blur.value==="true",dither:+st_dither.value,thr_custom:SETTINGS.thr_custom||"0.03",target_mbps:+(SETTINGS.target_mbps??12),deflicker:st_deflicker.value==="true",max_quality:st_max_quality.value==="true",denoise:st_denoise.value,two_pass:st_two_pass.value==="true",colour_safe:st_colour_safe.value==="true",source_interpretation:st_source_interpretation.value};
+  const body={dest_mode:st_dest_mode.value,dest_dir:st_dest_dir.value.trim(),suffix:st_suffix.value.trim()||"_10bit",on_exists:st_on_exists.value,audio:st_audio.value,dual_export:st_dual_export.value==="true",live_preview:st_live_preview.value==="true",engine:engineSelect.value,crf:+st_crf.value,preset:st_preset.value,deband_range:+st_deband_range.value,deband_blur:st_deband_blur.value==="true",dither:+st_dither.value,thr_custom:SETTINGS.thr_custom||"0.03",target_mbps:+(SETTINGS.target_mbps??12),deflicker:st_deflicker.value==="true",max_quality:st_max_quality.value==="true",denoise:st_denoise.value,two_pass:st_two_pass.value==="true",colour_safe:st_colour_safe.value==="true",source_interpretation:st_source_interpretation.value,output_colour:st_output_colour.value};
   if(body.dest_mode==="custom"&&!body.dest_dir){ alert("Choose an output folder, or switch back to “Next to each source”."); return; }
   await j("/api/settings",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}); SETTINGS=body; updateExportTarget(); updateEstimate(); updateCustomRate(); updateCustomDeband(); closeModal("mSettings"); setStatus("Settings saved.");
 }

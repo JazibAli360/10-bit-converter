@@ -1,9 +1,9 @@
 /* Top-level profile choices and the Advanced disclosure. */
 const PRESETS = {
-  delivery:{label:"Delivery",mode:"HEVC (smaller, delivery)",strength:"Medium",rate:"Match source",settings:{max_quality:false,colour_safe:false,source_interpretation:"preserve",audio:"copy",engine:"ffmpeg-deband-v1"}},
-  ai_safe:{label:"AI Footage Colour-Safe",mode:"HEVC (smaller, delivery)",strength:"Medium",rate:"Quality (CRF)",settings:{max_quality:true,colour_safe:true,source_interpretation:"preserve",audio:"copy",engine:"ffmpeg-deband-v1"}},
+  delivery:{label:"Delivery",mode:"HEVC (smaller, delivery)",strength:"Medium",rate:"Match source",settings:{max_quality:false,colour_safe:false,source_interpretation:"preserve",output_colour:"match_input",audio:"copy",engine:"ffmpeg-deband-v1"}},
+  ai_safe:{label:"AI Footage Colour-Safe",mode:"HEVC (smaller, delivery)",strength:"Medium",rate:"Quality (CRF)",settings:{max_quality:true,colour_safe:true,source_interpretation:"preserve",output_colour:"match_input",audio:"copy",engine:"ffmpeg-deband-v1"}},
   compatibility:{label:"H.264 10-bit (limited support)",mode:"H.264 (10-bit, delivery)",strength:"Medium",rate:"Match source",settings:{max_quality:false,audio:"copy"}},
-  grading:{label:"Grading",mode:"ProRes 4444 (grading, huge file)",strength:"Medium",rate:"Quality (CRF)",settings:{max_quality:true,dither:0,colour_safe:false,source_interpretation:"preserve",audio:"copy",engine:"ffmpeg-deband-v1"}},
+  grading:{label:"Grading",mode:"ProRes 4444 (grading, huge file)",strength:"Medium",rate:"Quality (CRF)",settings:{max_quality:true,dither:0,colour_safe:false,source_interpretation:"preserve",output_colour:"match_input",audio:"copy",engine:"ffmpeg-deband-v1"}},
   preserve:{label:"Gentle processing",mode:"HEVC (smaller, delivery)",strength:"Medium",rate:"Match source",settings:{max_quality:true,audio:"copy",engine:"ffmpeg-deband-v1"}},
 };
 const TOP_PROFILE_EXPLAINERS = {
