@@ -95,13 +95,18 @@ class ConversionPlanner:
         }
         if source_interpretation in assumptions:
             values = assumptions[source_interpretation]
-        invalid, args = {"", "unknown", "N/A", "reserved"}, []
+        # FFprobe omits tags that are not present.  Treat an omitted value the
+        # same way as an explicitly unknown one: preserve the picture and let
+        # the encoder proceed without manufacturing a colour declaration.
+        invalid, args = {"", "unknown", "N/A", "reserved", None}, []
         for key, flag in (("color_primaries", "-color_primaries"), ("color_transfer", "-color_trc"),
                           ("color_space", "-colorspace")):
-            if values.get(key) not in invalid:
-                args.extend((flag, values[key]))
-        if values.get("color_range") in {"tv", "pc", "limited", "full"}:
-            args.extend(("-color_range", values["color_range"]))
+            value = values.get(key)
+            if value not in invalid:
+                args.extend((flag, value))
+        range_value = values.get("color_range")
+        if range_value in {"tv", "pc", "limited", "full"}:
+            args.extend(("-color_range", range_value))
         return args
 
     @staticmethod

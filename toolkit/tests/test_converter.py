@@ -204,6 +204,12 @@ class ExportSafetyTests(unittest.TestCase):
         self.assertIn("colormatrix=bt709", plan["colour_encoder"][1])
         self.assertIn("AI Colour-Safe", plan["profile"])
 
+    def test_colour_tags_are_optional_for_untagged_video(self):
+        """A missing colour tag must never stop an otherwise valid export."""
+        planner = ConversionPlanner("/tmp/intake", DEFAULT_ENGINE.strength_thresholds, DEFAULT_ENGINE)
+        with patch("conversion_service.probe_colour_metadata", return_value={}):
+            self.assertEqual(planner.colour_args("/clip-without-tags.mp4"), [])
+
     def test_optional_libplacebo_is_capability_gated(self):
         class Result:
             returncode = 1
