@@ -182,6 +182,13 @@ class ExportSafetyTests(unittest.TestCase):
         ))
         self.assertEqual(pixfmt_bits("yuv420p10le"), 10)
 
+    def test_zero_dither_adds_no_synthetic_grain(self):
+        filters = DEFAULT_ENGINE.build_filter_chain(
+            "0.02", "yuv444p10le", range=16, blur=True, dither=0,
+        )
+        self.assertNotIn("noise=", filters)
+        self.assertNotIn("zscale=dither", filters)
+
     def test_ai_colour_safe_pipeline_is_high_precision_chroma_aware_and_stable(self):
         filters = DEFAULT_ENGINE.build_filter_chain(
             "0.02", "yuv420p10le", range=16, blur=True, dither=2, colour_safe=True,

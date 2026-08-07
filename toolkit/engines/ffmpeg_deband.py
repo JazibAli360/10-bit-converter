@@ -38,13 +38,23 @@ class FFmpegDebandEngine:
         if max_quality or colour_safe:
             chain += "format=yuv444p16le,"
         chroma_threshold = str(float(threshold) * 0.60) if colour_safe else threshold
+        try:
+            dither_amount = max(0, int(dither))
+        except (TypeError, ValueError):
+            dither_amount = 2
         chain += (f"deband=1thr={threshold}:2thr={chroma_threshold}:3thr={chroma_threshold}:"
-                  f"range={rng}:blur={1 if blur else 0},noise=alls={dither}:allf=t+u")
-        if colour_safe:
+                  f"range={rng}:blur={1 if blur else 0}")
+        if dither_amount:
+            # Temporal random dither is good at breaking up contour steps in a
+            # delivery encode, but a high-bitrate ProRes master preserves it
+            # as visible grain. A master profile can therefore disable it.
+            flags = "p" if colour_safe else "t+u"
+            chain += f",noise=alls={dither_amount}:allf={flags}"
+        if colour_safe and dither_amount:
             # A fixed pattern avoids temporal randomization, while zscale's
             # error diffusion makes the final 16-bit → 10-bit reduction less
             # prone to coloured contour steps.
-            chain = chain.replace("allf=t+u", "allf=p") + ",zscale=dither=error_diffusion"
+            chain += ",zscale=dither=error_diffusion"
         return chain + f",format={pix_fmt}"
 
     def availability(self, ffmpeg_path="ffmpeg"):

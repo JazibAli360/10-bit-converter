@@ -3,7 +3,7 @@ const PRESETS = {
   delivery:{label:"Delivery",mode:"HEVC (smaller, delivery)",strength:"Medium",rate:"Match source",settings:{max_quality:false,colour_safe:false,source_interpretation:"preserve",audio:"copy",engine:"ffmpeg-deband-v1"}},
   ai_safe:{label:"AI Footage Colour-Safe",mode:"HEVC (smaller, delivery)",strength:"Medium",rate:"Quality (CRF)",settings:{max_quality:true,colour_safe:true,source_interpretation:"preserve",audio:"copy",engine:"ffmpeg-deband-v1"}},
   compatibility:{label:"H.264 10-bit (limited support)",mode:"H.264 (10-bit, delivery)",strength:"Medium",rate:"Match source",settings:{max_quality:false,audio:"copy"}},
-  grading:{label:"Grading",mode:"ProRes 4444 (grading, huge file)",strength:"High",rate:"Quality (CRF)",settings:{max_quality:true,colour_safe:false,source_interpretation:"preserve",audio:"copy",engine:"ffmpeg-deband-v1"}},
+  grading:{label:"Grading",mode:"ProRes 4444 (grading, huge file)",strength:"Medium",rate:"Quality (CRF)",settings:{max_quality:true,dither:0,colour_safe:false,source_interpretation:"preserve",audio:"copy",engine:"ffmpeg-deband-v1"}},
   preserve:{label:"Gentle processing",mode:"HEVC (smaller, delivery)",strength:"Medium",rate:"Match source",settings:{max_quality:true,audio:"copy",engine:"ffmpeg-deband-v1"}},
 };
 const TOP_PROFILE_EXPLAINERS = {
@@ -19,8 +19,8 @@ const TOP_PROFILE_EXPLAINERS = {
   },
   editing:{
     goodFor:"Clips headed into a colour grade, edit, or VFX workflow.",
-    changes:"ProRes 4444 · high deband · quality-processing path.",
-    watchOut:"Very large files. Make sure the destination drive has room.",
+    changes:"ProRes 4444 · medium deband · 16-bit internal processing · no added grain.",
+    watchOut:"Very large files. Dither stays off for a clean master; use Advanced only if a delivery render still needs it.",
   },
   advanced:{
     goodFor:"People who already know which codec or deband control to change.",
